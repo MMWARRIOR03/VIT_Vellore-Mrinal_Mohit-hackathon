@@ -63,6 +63,19 @@ class Settings(BaseSettings):
     nlp_model_name: str = Field(default="placeholder/finbert")
     nlp_confidence_threshold: float = Field(default=0.65, ge=0.0, le=1.0)
 
+    # ── Event classifier (Task 6) ─────────────────────────────────────────────
+    event_classifier: str = Field(
+        default="rule-based",
+        description=(
+            "Which event classifier to use: 'rule-based' or 'deberta'. "
+            "Set to 'deberta' to enable the fine-tuned DeBERTa model."
+        ),
+    )
+    deberta_model_path: str = Field(
+        default="data/models/event_deberta",
+        description="Path to the fine-tuned DeBERTa event classifier checkpoint.",
+    )
+
     # ── Ingestion layer (Task 2) ──────────────────────────────────────────────
     ingestion_enabled: bool = Field(
         default=False,

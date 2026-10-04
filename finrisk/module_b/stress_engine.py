@@ -11,9 +11,10 @@ Pipeline for each incoming signal
   6. Inject PD/LGD multipliers into shocks
   7. ScenarioEngine.flatten_shocks     → merge into a single flat dict
   8. PortfolioValuator.compute_total_pnl → full first-order P&L calculation
-  9. Package into StressResult
- 10. persist_result → DuckDB (async)
- 11. publish to signals.stress Redis stream (async)
+  9. MonteCarloEngine.run              → VaR, ES, expected loss (async, thread-pool)
+ 10. Package into StressResult
+ 11. persist_result → DuckDB (async)
+ 12. publish to signals.stress Redis stream (async)
 
 The portfolio is built once at engine construction and shared across all runs.
 This is intentional: the portfolio is the fixed book under test, and we want
@@ -23,24 +24,25 @@ every stress run to operate on the same positions.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
 from app.schema.risk_signal import RiskSignal
 from app.storage.duckdb_store import DuckDBStore
 from app.streams.redis_streams import STREAM_SIGNALS_STRESS, RedisStreamClient
+from module_b.monte_carlo import MonteCarloEngine, MonteCarloResult
 from module_b.portfolio import SyntheticPortfolio
+from module_b.reverse_stress import ReverseStressResult, ReverseStressTester
 from module_b.scenarios import ScenarioEngine
 from module_b.trigger import StressTrigger
 from module_b.valuation import PnLResult, PortfolioValuator
 
 logger = logging.getLogger(__name__)
 
-MODEL_VERSION: str = "module-b-v1.0"
+MODEL_VERSION: str = "module-b-v2.0"
 
 
 # ── Result dataclass ──────────────────────────────────────────────────────────
@@ -54,6 +56,9 @@ class StressResult:
     ``breakdown_by_sector`` are delta P&L dictionaries (negative = loss).
     ``shocks_applied`` is the fully-resolved flat shock dict after scaling
     and sentiment correction, for auditability.
+
+    Monte Carlo fields (mc_*) are populated by run_stress_test_full() and
+    are None when only the deterministic run_stress_test() is called.
     """
 
     run_id: str
@@ -72,10 +77,15 @@ class StressResult:
     model_version: str = MODEL_VERSION
     # Top 10 biggest loss positions for the dashboard
     top_losers: list[tuple[str, float]] = field(default_factory=list)
+    # Monte Carlo risk metrics (None until MC run completes)
+    mc_var_95: float | None = None
+    mc_es_95: float | None = None
+    mc_expected_loss: float | None = None
+    mc_worst_loss: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Serialise to a plain dict (safe for JSON encoding)."""
-        d = {
+        return {
             "run_id": self.run_id,
             "ts_created": self.ts_created.isoformat(),
             "trigger_signal_id": self.trigger_signal_id,
@@ -91,8 +101,11 @@ class StressResult:
             "shocks_applied": self.shocks_applied,
             "model_version": self.model_version,
             "top_losers": self.top_losers,
+            "mc_var_95": self.mc_var_95,
+            "mc_es_95": self.mc_es_95,
+            "mc_expected_loss": self.mc_expected_loss,
+            "mc_worst_loss": self.mc_worst_loss,
         }
-        return d
 
 
 # ── Engine ────────────────────────────────────────────────────────────────────
@@ -109,6 +122,7 @@ class StressEngine:
     trigger        : StressTrigger
     db             : DuckDBStore | None — if None, persistence is skipped
     redis          : RedisStreamClient | None — if None, publishing is skipped
+    mc_n_paths     : number of Monte Carlo paths (default 10_000)
     """
 
     def __init__(
@@ -119,6 +133,7 @@ class StressEngine:
         trigger: StressTrigger | None = None,
         db: DuckDBStore | None = None,
         redis: RedisStreamClient | None = None,
+        mc_n_paths: int = 10_000,
     ) -> None:
         self.portfolio = portfolio or SyntheticPortfolio()
         self.valuator = valuator or PortfolioValuator()
@@ -126,22 +141,25 @@ class StressEngine:
         self.trigger = trigger or StressTrigger()
         self._db = db
         self._redis = redis
+        self.mc_engine = MonteCarloEngine(n_paths=mc_n_paths)
+        self.reverse_tester = ReverseStressTester()
 
         logger.info(
-            "StressEngine initialised: %d positions, NAV=$%.0f",
+            "StressEngine initialised: %d positions, NAV=$%.0f, MC n_paths=%d",
             self.portfolio.position_count()["total"],
             self.portfolio.compute_nav(),
+            mc_n_paths,
         )
 
-    # ── Core pipeline ─────────────────────────────────────────────────────────
+    # ── Core deterministic pipeline ───────────────────────────────────────────
 
     def run_stress_test(self, signal: RiskSignal) -> StressResult | None:
         """
-        Run the full stress-test pipeline for a signal.
+        Run the deterministic stress-test pipeline for a signal.
 
-        Returns a StressResult if the trigger fired, None otherwise.
-        This method is synchronous (pure computation); I/O happens in
-        persist_result and on_signal.
+        Returns a StressResult (without MC fields) if the trigger fired,
+        None otherwise.  This method is synchronous; I/O and MC happen in
+        run_stress_test_full / on_signal.
         """
         # Step 1: Gate
         if not self.trigger.consume_signals(signal):
@@ -172,7 +190,7 @@ class StressEngine:
         # Step 7–8: Full valuation
         pnl: PnLResult = self.valuator.compute_total_pnl(self.portfolio, flat_shocks)
 
-        # Step 9: Package result
+        # Step 9: Package result (MC fields left as None here)
         result = StressResult(
             run_id=str(uuid.uuid4()),
             ts_created=datetime.now(tz=timezone.utc),
@@ -191,7 +209,7 @@ class StressEngine:
         )
 
         logger.info(
-            "StressResult: run_id=%s  scenario=%s  ΔNAV=$%,.0f (%.2f%%)  "
+            "StressResult (det): run_id=%s  scenario=%s  ΔNAV=$%,.0f (%.2f%%)  "
             "tickers=%s",
             result.run_id,
             result.scenario_name,
@@ -201,18 +219,87 @@ class StressEngine:
         )
         return result
 
+    # ── Full async pipeline (deterministic + MC) ──────────────────────────────
+
+    async def run_stress_test_full(
+        self, signal: RiskSignal
+    ) -> StressResult | None:
+        """
+        Run the deterministic pipeline and then layer on Monte Carlo metrics.
+
+        The deterministic part is synchronous; the MC run is offloaded to a
+        thread-pool executor so it doesn't block the event loop.
+
+        Returns StressResult with mc_* fields populated, or None if the
+        trigger did not fire.
+        """
+        # Deterministic part (sync, fast)
+        result = self.run_stress_test(signal)
+        if result is None:
+            return None
+
+        # MC part: offload to thread pool
+        loop = asyncio.get_event_loop()
+        try:
+            mc_result: MonteCarloResult = await loop.run_in_executor(
+                None,
+                self.mc_engine.run,
+                self.portfolio,
+                result.shocks_applied,
+                signal.impact,
+                signal.impact_range,
+                self.valuator,
+            )
+            result.mc_var_95 = mc_result.var_95
+            result.mc_es_95 = mc_result.es_95
+            result.mc_expected_loss = mc_result.expected_loss
+            result.mc_worst_loss = mc_result.worst_loss
+            logger.info(
+                "MC metrics attached: run_id=%s  VaR95=$%,.0f  ES95=$%,.0f",
+                result.run_id,
+                result.mc_var_95,
+                result.mc_es_95,
+            )
+        except Exception as exc:
+            logger.error(
+                "MC run failed for run_id=%s: %s — proceeding with det result only",
+                result.run_id,
+                exc,
+            )
+
+        return result
+
+    # ── Reverse stress ────────────────────────────────────────────────────────
+
+    def run_reverse_stress(
+        self,
+        event_type: str,
+        loss_limit_pct: float = 0.10,
+    ) -> ReverseStressResult:
+        """
+        Find the minimum impact that causes expected_loss to exceed
+        loss_limit_pct × NAV for the given event_type.
+
+        Wraps ReverseStressTester.find_breach_threshold with the engine's
+        shared portfolio, valuator, scenario_engine, and mc_engine.
+        """
+        return self.reverse_tester.find_breach_threshold(
+            portfolio=self.portfolio,
+            valuator=self.valuator,
+            scenario_engine=self.scenario_engine,
+            mc_engine=self.mc_engine,
+            event_type=event_type,
+            loss_limit_pct=loss_limit_pct,
+        )
+
     # ── Async I/O ─────────────────────────────────────────────────────────────
 
     async def persist_result(self, result: StressResult) -> None:
         """
         Persist a StressResult to DuckDB stress_runs table.
 
-        The DuckDBStore.write_stress_run contract expects:
-            run_id, ts_created, scenario_name, trigger_signal (str|None),
-            pnl_impact, var_95, cvar_95, results (dict), meta (dict|None)
-
-        var_95 and cvar_95 are left as None in v1 (Monte Carlo is out of scope
-        for this deterministic module; they will be filled by a future MC layer).
+        mc_var_95 and mc_es_95 are written to the var_95 / cvar_95 columns
+        when available (populated by run_stress_test_full).
         """
         if self._db is None:
             logger.debug("No DuckDB configured — skipping persistence for run %s", result.run_id)
@@ -224,8 +311,8 @@ class StressEngine:
             "scenario_name": result.scenario_name,
             "trigger_signal": result.trigger_signal_id,
             "pnl_impact": result.delta_nav,
-            "var_95": None,
-            "cvar_95": None,
+            "var_95": result.mc_var_95,
+            "cvar_95": result.mc_es_95,
             "results": {
                 "pre_nav": result.pre_nav,
                 "post_nav": result.post_nav,
@@ -234,6 +321,8 @@ class StressEngine:
                 "breakdown_by_asset_class": result.breakdown_by_asset_class,
                 "breakdown_by_sector": result.breakdown_by_sector,
                 "top_losers": result.top_losers,
+                "mc_expected_loss": result.mc_expected_loss,
+                "mc_worst_loss": result.mc_worst_loss,
             },
             "meta": {
                 "event_type": result.event_type,
@@ -253,12 +342,12 @@ class StressEngine:
         """
         High-level entry point called when a signal arrives.
 
-        1. Run the stress test (synchronous computation)
+        1. Run the full stress test (deterministic + MC)
         2. If triggered, persist to DuckDB
         3. Publish to signals.stress Redis stream
         4. Return the result (or None if not triggered)
         """
-        result = self.run_stress_test(signal)
+        result = await self.run_stress_test_full(signal)
         if result is None:
             return None
 
@@ -299,6 +388,8 @@ class StressEngine:
             "breakdown_by_sector": result.breakdown_by_sector,
             "tickers": [t.ticker for t in original_signal.tickers],
             "model_version": result.model_version,
+            "mc_var_95": result.mc_var_95,
+            "mc_es_95": result.mc_es_95,
         }
 
         try:
