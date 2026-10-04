@@ -55,11 +55,17 @@ format:  ## Auto-format with ruff
 
 # ─── Docker / infrastructure ─────────────────────────────────────────────────
 
-up:  ## Start all services (Redis + API) via docker-compose
+up:  ## Start all services (Redis + API + worker + dashboard) via docker-compose
 	docker compose up -d --build
 
 down:  ## Stop all services
 	docker compose down
+
+demo:  ## Run in offline demo/replay mode (no internet required)
+	REPLAY_MODE=true docker compose up --build
+
+live:  ## Run with live data ingestion (all 5 services)
+	docker compose --profile live up --build
 
 redis-up:  ## Start only Redis (for local dev without Docker API)
 	docker compose up -d redis
@@ -67,7 +73,22 @@ redis-up:  ## Start only Redis (for local dev without Docker API)
 redis-down:  ## Stop Redis
 	docker compose stop redis
 
+inject:  ## Test the /inject endpoint (requires running API)
+	curl -s -X POST http://localhost:8000/inject \
+	  -H "Content-Type: application/json" \
+	  -d '{"text": "NVIDIA faces major export restrictions on AI chips", "ticker": "NVDA"}' \
+	  | python3 -m json.tool
+
+sample-data:  ## Pre-generate offline replay data (articles + signals)
+	$(VENV)/bin/python scripts/generate_sample_data.py
+
+sample-data-fast:  ## Pre-generate articles only (skip NLP model download)
+	$(VENV)/bin/python scripts/generate_sample_data.py --no-nlp
+
 # ─── Housekeeping ────────────────────────────────────────────────────────────
+
+dashboard:  ## Run Streamlit dashboard on port 8501
+	$(VENV)/bin/streamlit run dashboard/app.py --server.port 8501
 
 clean:  ## Remove venv, cache, and test artifacts
 	rm -rf $(VENV) __pycache__ .pytest_cache htmlcov .coverage

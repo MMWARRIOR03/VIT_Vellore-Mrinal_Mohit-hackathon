@@ -110,6 +110,61 @@ class Settings(BaseSettings):
         description="Comma-separated list of adapters to enable.",
     )
 
+    # ── Replay mode (Task 10B) ─────────────────────────────────────────────────
+    replay_mode: bool = Field(
+        default=False,
+        description=(
+            "When true, run ReplayRunner instead of live ingestion. "
+            "Replays pre-cached sample data so the demo works without internet."
+        ),
+    )
+    replay_speed_multiplier: float = Field(
+        default=10.0,
+        ge=0.01,
+        description="Speed multiplier for replay (10.0 = 10× faster than real time).",
+    )
+    sample_data_dir: Path = Field(
+        default=Path("./data/sample"),
+        description="Directory containing articles.jsonl / signals.jsonl for replay.",
+    )
+
+    # ── LLM explanation layer (Task 10D) ──────────────────────────────────────
+    llm_provider: str = Field(
+        default="none",
+        description="LLM provider for signal explanations: 'groq' | 'ollama' | 'none'.",
+    )
+    groq_api_key: str = Field(
+        default="",
+        description="Groq API key (get a free one at console.groq.com).",
+    )
+    groq_model: str = Field(
+        default="llama-3.1-8b-instant",
+        description="Groq model to use for explanations.",
+    )
+    ollama_base_url: str = Field(
+        default="http://host.docker.internal:11434",
+        description="Base URL for a locally-running Ollama server.",
+    )
+    ollama_model: str = Field(
+        default="qwen3:4b",
+        description="Ollama model to use for explanations.",
+    )
+
+    # ── Module toggles (Task 10) ───────────────────────────────────────────────
+    nlp_worker_enabled: bool = Field(
+        default=True,
+        description="Enable the NLP worker background task on API startup.",
+    )
+    mc_n_paths: int = Field(
+        default=10_000,
+        ge=100,
+        description="Number of Monte Carlo paths for Module B stress tests.",
+    )
+    mc_enabled: bool = Field(
+        default=True,
+        description="Enable Monte Carlo simulation in Module B (disable for speed).",
+    )
+
     # ─────────────────────────────────────────────────────────────────────────
 
     @field_validator("log_level")

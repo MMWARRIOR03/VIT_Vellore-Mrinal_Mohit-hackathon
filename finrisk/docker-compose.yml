@@ -1,6 +1,7 @@
 version: "3.9"
 
 services:
+  # ── Redis ───────────────────────────────────────────────────────────────────
   redis:
     image: redis:7.2-alpine
     container_name: finrisk-redis
@@ -16,27 +17,89 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ── API server ───────────────────────────────────────────────────────────────
   api:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile.api
     container_name: finrisk-api
     ports:
       - "8000:8000"
     env_file:
       - .env
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - DUCKDB_PATH=/data/finrisk.duckdb
+      REDIS_URL: redis://redis:6379/0
+      DUCKDB_PATH: /app/data/finrisk.duckdb
     volumes:
-      - duckdb_data:/data
-      - .:/app
+      - ./data:/app/data
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ── NLP worker ───────────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    container_name: finrisk-worker
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DUCKDB_PATH: /app/data/finrisk.duckdb
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Live ingestion (opt-in via --profile live) ────────────────────────────
+  ingestion:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.ingestion
+    container_name: finrisk-ingestion
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DUCKDB_PATH: /app/data/finrisk.duckdb
+      INGESTION_ENABLED: "true"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    profiles:
+      - live
+    restart: unless-stopped
+
+  # ── Streamlit dashboard ───────────────────────────────────────────────────
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+    container_name: finrisk-dashboard
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      DUCKDB_PATH: /app/data/finrisk.duckdb
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   redis_data:
-  duckdb_data:

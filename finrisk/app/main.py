@@ -6,12 +6,15 @@ Startup order
 1. DuckDB store initialises schema (idempotent DDL).
 2. Redis connection pool is created.
 3. Fake signal generator starts its background loop (if enabled).
+4. NLP worker starts (if NLP_WORKER_ENABLED=true).
+5a. Replay runner starts (if REPLAY_MODE=true).
+5b. Live ingestion pipeline starts (if INGESTION_ENABLED=true and not replay mode).
+6. SignalExplainer singleton is attached to app.state.
 
 Shutdown order
 ──────────────
-1. Generator loop is cancelled.
-2. Redis connection is closed.
-3. DuckDB connection is closed.
+All background tasks are cancelled in reverse startup order.
+Redis and DuckDB are closed last.
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ from app.storage.duckdb_store import DuckDBStore
 from app.streams.redis_streams import RedisStreamClient
 from app.generators.fake_signal import FakeSignalGenerator
 from app.routes import health, signals, articles
+from app.routes import inject as inject_router
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -45,6 +49,8 @@ _db_store: DuckDBStore | None = None
 _redis_client: RedisStreamClient | None = None
 _generator_task: asyncio.Task | None = None
 _ingestion_task: asyncio.Task | None = None
+_nlp_task: asyncio.Task | None = None
+_replay_task: asyncio.Task | None = None
 
 
 def get_db() -> DuckDBStore:
@@ -64,6 +70,7 @@ def get_redis() -> RedisStreamClient:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _db_store, _redis_client, _generator_task, _ingestion_task
+    global _nlp_task, _replay_task
 
     logger.info("FinRisk API starting up …")
 
@@ -96,8 +103,38 @@ async def lifespan(app: FastAPI):
             settings.fake_signal_interval_seconds,
         )
 
-    # 5. Ingestion pipeline (Task 2)
-    if settings.ingestion_enabled:
+    # 5. NLP worker
+    if settings.nlp_worker_enabled:
+        from app.engine.worker_runner import start_nlp_worker
+        # Pre-create the worker and stash it on app.state so /inject can reuse it
+        from app.engine.nlp_worker import NLPWorker
+        nlp_worker_instance = NLPWorker(db=_db_store, redis=_redis_client)
+        app.state.nlp_worker = nlp_worker_instance
+        _nlp_task = asyncio.create_task(
+            nlp_worker_instance.run_forever(),
+            name="nlp-worker",
+        )
+        logger.info("NLP worker started")
+
+    # 6a. Replay mode
+    if settings.replay_mode:
+        from app.replay.replay_runner import ReplayRunner
+        runner = ReplayRunner(
+            sample_dir=settings.sample_data_dir,
+            speed_multiplier=settings.replay_speed_multiplier,
+            redis_client=_redis_client,
+        )
+        _replay_task = asyncio.create_task(
+            runner.run_forever(),
+            name="replay-runner",
+        )
+        logger.info(
+            "Replay runner started (speed=%.1f×, dir=%s)",
+            settings.replay_speed_multiplier,
+            settings.sample_data_dir,
+        )
+    # 6b. Live ingestion pipeline
+    elif settings.ingestion_enabled:
         from app.ingestion.manager import start_ingestion
         _ingestion_task = asyncio.create_task(
             start_ingestion(db=_db_store, redis=_redis_client),
@@ -105,24 +142,35 @@ async def lifespan(app: FastAPI):
         )
         logger.info("Ingestion pipeline started")
 
+    # 7. LLM explainer singleton
+    from app.llm.explainer import SignalExplainer
+    app.state.explainer = SignalExplainer(
+        provider=settings.llm_provider,
+        groq_api_key=settings.groq_api_key,
+        groq_model=settings.groq_model,
+        ollama_base_url=settings.ollama_base_url,
+        ollama_model=settings.ollama_model,
+    )
+    logger.info("SignalExplainer ready (provider=%r)", settings.llm_provider)
+
     yield
 
     # ── Shutdown ──────────────────────────────────────────────────────────────
     logger.info("FinRisk API shutting down …")
 
-    if _ingestion_task is not None and not _ingestion_task.done():
-        _ingestion_task.cancel()
-        try:
-            await _ingestion_task
-        except asyncio.CancelledError:
-            pass
-
-    if _generator_task is not None and not _generator_task.done():
-        _generator_task.cancel()
-        try:
-            await _generator_task
-        except asyncio.CancelledError:
-            pass
+    for task_name, task in [
+        ("replay-runner", _replay_task),
+        ("ingestion-pipeline", _ingestion_task),
+        ("nlp-worker", _nlp_task),
+        ("fake-signal-generator", _generator_task),
+    ]:
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            logger.debug("%s cancelled", task_name)
 
     if _redis_client is not None:
         await _redis_client.close()
@@ -160,6 +208,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router, tags=["health"])
     app.include_router(signals.router, prefix="/signals", tags=["signals"])
     app.include_router(articles.router, prefix="/articles", tags=["articles"])
+    app.include_router(inject_router.router)   # prefix="/inject" set in the router
 
     # ── Global exception handler ──────────────────────────────────────────────
     @app.exception_handler(Exception)
