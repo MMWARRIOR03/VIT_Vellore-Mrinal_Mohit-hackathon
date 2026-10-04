@@ -1,0 +1,149 @@
+# FinRisk synthetic equity index — 20 constituents
+# base_weight: equal-weight (1/20 = 0.05 each)
+# sector tags drive the stress-test sector shock vectors in scenarios.yaml
+
+meta:
+  name: FinRisk-20
+  description: Synthetic 20-stock index for development and testing
+  total_weight: 1.00
+
+constituents:
+  - ticker: AAPL
+    company: Apple Inc.
+    sector: Technology
+    sub_sector: Consumer Electronics
+    exchange: NASDAQ
+    base_weight: 0.05
+
+  - ticker: MSFT
+    company: Microsoft Corporation
+    sector: Technology
+    sub_sector: Enterprise Software
+    exchange: NASDAQ
+    base_weight: 0.05
+
+  - ticker: NVDA
+    company: NVIDIA Corporation
+    sector: Technology
+    sub_sector: Semiconductors
+    exchange: NASDAQ
+    base_weight: 0.05
+
+  - ticker: GOOGL
+    company: Alphabet Inc.
+    sector: Communication Services
+    sub_sector: Internet & Search
+    exchange: NASDAQ
+    base_weight: 0.05
+
+  - ticker: AMZN
+    company: Amazon.com Inc.
+    sector: Consumer Discretionary
+    sub_sector: E-Commerce & Cloud
+    exchange: NASDAQ
+    base_weight: 0.05
+
+  - ticker: META
+    company: Meta Platforms Inc.
+    sector: Communication Services
+    sub_sector: Social Media
+    exchange: NASDAQ
+    base_weight: 0.05
+
+  - ticker: TSLA
+    company: Tesla Inc.
+    sector: Consumer Discretionary
+    sub_sector: Electric Vehicles
+    exchange: NASDAQ
+    base_weight: 0.05
+
+  - ticker: JPM
+    company: JPMorgan Chase & Co.
+    sector: Financials
+    sub_sector: Diversified Banks
+    exchange: NYSE
+    base_weight: 0.05
+
+  - ticker: BAC
+    company: Bank of America Corporation
+    sector: Financials
+    sub_sector: Diversified Banks
+    exchange: NYSE
+    base_weight: 0.05
+
+  - ticker: GS
+    company: The Goldman Sachs Group Inc.
+    sector: Financials
+    sub_sector: Capital Markets
+    exchange: NYSE
+    base_weight: 0.05
+
+  - ticker: V
+    company: Visa Inc.
+    sector: Financials
+    sub_sector: Payment Processing
+    exchange: NYSE
+    base_weight: 0.05
+
+  - ticker: JNJ
+    company: Johnson & Johnson
+    sector: Health Care
+    sub_sector: Pharmaceuticals
+    exchange: NYSE
+    base_weight: 0.05
+
+  - ticker: UNH
+    company: UnitedHealth Group Inc.
+    sector: Health Care
+    sub_sector: Managed Health Care
+    exchange: NYSE
+    base_weight: 0.05
+
+  - ticker: PFE
+    company: Pfizer Inc.
+    sector: Health Care
+    sub_sector: Pharmaceuticals
+    exchange: NYSE
+    base_weight: 0.05
+
+  - ticker: XOM
+    company: Exxon Mobil Corporation
+    sector: Energy
+    sub_sector: Integrated Oil & Gas
+    exchange: NYSE
+    base_weight: 0.05
+
+  - ticker: CVX
+    company: Chevron Corporation
+    sector: Energy
+    sub_sector: Integrated Oil & Gas
+    exchange: NYSE
+    base_weight: 0.05
+
+  - ticker: CAT
+    company: Caterpillar Inc.
+    sector: Industrials
+    sub_sector: Construction Machinery
+    exchange: NYSE
+    base_weight: 0.05
+
+  - ticker: BA
+    company: The Boeing Company
+    sector: Industrials
+    sub_sector: Aerospace & Defense
+    exchange: NYSE
+    base_weight: 0.05
+
+  - ticker: WMT
+    company: Walmart Inc.
+    sector: Consumer Staples
+    sub_sector: Discount Stores
+    exchange: NYSE
+    base_weight: 0.05
+
+  - ticker: HD
+    company: The Home Depot Inc.
+    sector: Consumer Discretionary
+    sub_sector: Home Improvement Retail
+    exchange: NYSE
+    base_weight: 0.05

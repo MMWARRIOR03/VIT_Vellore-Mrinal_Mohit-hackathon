@@ -1,0 +1,228 @@
+# FinRisk ticker map — used by the NLP entity-linking layer (Task 2).
+#
+# Each entry provides the canonical ticker symbol plus a set of aliases
+# (company name variants, common abbreviations, and misspellings) so that
+# the NER model can resolve free-text mentions to a canonical ticker.
+#
+# Format:
+#   ticker:
+#     canonical: <EXCHANGE>:<SYMBOL>
+#     company:   Full legal name
+#     aliases:   list of strings the NLP model should map to this ticker
+#     sector:    From index.yaml (kept in sync)
+
+tickers:
+
+  AAPL:
+    canonical: NASDAQ:AAPL
+    company: Apple Inc.
+    sector: Technology
+    aliases:
+      - Apple
+      - Apple Inc
+      - Apple Inc.
+      - Apple Computer
+      - AAPL
+
+  MSFT:
+    canonical: NASDAQ:MSFT
+    company: Microsoft Corporation
+    sector: Technology
+    aliases:
+      - Microsoft
+      - Microsoft Corp
+      - Microsoft Corporation
+      - MSFT
+
+  NVDA:
+    canonical: NASDAQ:NVDA
+    company: NVIDIA Corporation
+    sector: Technology
+    aliases:
+      - Nvidia
+      - NVIDIA
+      - NVIDIA Corp
+      - NVIDIA Corporation
+      - NVDA
+
+  GOOGL:
+    canonical: NASDAQ:GOOGL
+    company: Alphabet Inc.
+    sector: Communication Services
+    aliases:
+      - Google
+      - Alphabet
+      - Alphabet Inc
+      - Alphabet Inc.
+      - GOOGL
+      - GOOG
+
+  AMZN:
+    canonical: NASDAQ:AMZN
+    company: Amazon.com Inc.
+    sector: Consumer Discretionary
+    aliases:
+      - Amazon
+      - Amazon.com
+      - Amazon Web Services
+      - AWS
+      - AMZN
+
+  META:
+    canonical: NASDAQ:META
+    company: Meta Platforms Inc.
+    sector: Communication Services
+    aliases:
+      - Meta
+      - Meta Platforms
+      - Facebook
+      - Instagram
+      - WhatsApp
+      - META
+
+  TSLA:
+    canonical: NASDAQ:TSLA
+    company: Tesla Inc.
+    sector: Consumer Discretionary
+    aliases:
+      - Tesla
+      - Tesla Inc
+      - Tesla Motors
+      - TSLA
+
+  JPM:
+    canonical: NYSE:JPM
+    company: JPMorgan Chase & Co.
+    sector: Financials
+    aliases:
+      - JPMorgan
+      - JP Morgan
+      - JPMorgan Chase
+      - Chase Bank
+      - JPMorgan Chase & Co
+      - JPM
+
+  BAC:
+    canonical: NYSE:BAC
+    company: Bank of America Corporation
+    sector: Financials
+    aliases:
+      - Bank of America
+      - BofA
+      - Bank of America Corp
+      - Merrill Lynch
+      - BAC
+
+  GS:
+    canonical: NYSE:GS
+    company: The Goldman Sachs Group Inc.
+    sector: Financials
+    aliases:
+      - Goldman Sachs
+      - Goldman
+      - GS
+      - The Goldman Sachs Group
+
+  V:
+    canonical: NYSE:V
+    company: Visa Inc.
+    sector: Financials
+    aliases:
+      - Visa
+      - Visa Inc
+      - Visa Inc.
+
+  JNJ:
+    canonical: NYSE:JNJ
+    company: Johnson & Johnson
+    sector: Health Care
+    aliases:
+      - Johnson and Johnson
+      - J&J
+      - JNJ
+      - Janssen
+      - Johnson Johnson
+
+  UNH:
+    canonical: NYSE:UNH
+    company: UnitedHealth Group Inc.
+    sector: Health Care
+    aliases:
+      - UnitedHealth
+      - UnitedHealth Group
+      - United Health
+      - UNH
+      - Optum
+
+  PFE:
+    canonical: NYSE:PFE
+    company: Pfizer Inc.
+    sector: Health Care
+    aliases:
+      - Pfizer
+      - Pfizer Inc
+      - Pfizer Inc.
+      - PFE
+
+  XOM:
+    canonical: NYSE:XOM
+    company: Exxon Mobil Corporation
+    sector: Energy
+    aliases:
+      - ExxonMobil
+      - Exxon Mobil
+      - Exxon
+      - XOM
+      - Exxon Mobil Corporation
+
+  CVX:
+    canonical: NYSE:CVX
+    company: Chevron Corporation
+    sector: Energy
+    aliases:
+      - Chevron
+      - Chevron Corp
+      - Chevron Corporation
+      - CVX
+
+  CAT:
+    canonical: NYSE:CAT
+    company: Caterpillar Inc.
+    sector: Industrials
+    aliases:
+      - Caterpillar
+      - Caterpillar Inc
+      - Cat Inc
+      - CAT
+
+  BA:
+    canonical: NYSE:BA
+    company: The Boeing Company
+    sector: Industrials
+    aliases:
+      - Boeing
+      - The Boeing Company
+      - Boeing Co
+      - BA
+
+  WMT:
+    canonical: NYSE:WMT
+    company: Walmart Inc.
+    sector: Consumer Staples
+    aliases:
+      - Walmart
+      - Wal-Mart
+      - Wal Mart
+      - Walmart Inc
+      - WMT
+      - Sam's Club
+
+  HD:
+    canonical: NYSE:HD
+    company: The Home Depot Inc.
+    sector: Consumer Discretionary
+    aliases:
+      - Home Depot
+      - The Home Depot
+      - Home Depot Inc
+      - HD

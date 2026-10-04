@@ -1,0 +1,94 @@
+# FinRisk synthetic wholesale portfolio — metadata only.
+# Actual positions are generated programmatically by Module B (stress tester)
+# using the asset-class specs below.  This file defines the generation parameters;
+# Module B owns the position-generation logic and DuckDB persistence.
+
+meta:
+  name: FinRisk Synthetic Wholesale Portfolio
+  description: >
+    A fictional institutional portfolio used for stress-testing.
+    Designed to span multiple asset classes and exhibit realistic cross-asset
+    correlations under the scenario shocks defined in scenarios.yaml.
+    All names, issuers, and counterparties are entirely fabricated.
+  currency: USD
+  total_nav: 50_000_000          # $50 million notional AUM
+  as_of: "2024-01-01"           # snapshot date for position generation
+  version: "1.0"
+
+# ── Asset class breakdown ─────────────────────────────────────────────────────
+# count         : number of positions to generate
+# nav_fraction  : share of total_nav allocated to this class
+# description   : generation guidance for Module B
+
+asset_classes:
+
+  corporate_bonds:
+    count: 120
+    nav_fraction: 0.42            # $21 M
+    description: >
+      Investment-grade (80 %) and high-yield (20 %) USD-denominated corporate bonds.
+      Maturities distributed: 25 % short (<3y), 50 % medium (3–10y), 25 % long (>10y).
+      Spread DV01 and duration are the primary risk drivers.
+    rating_distribution:
+      AAA: 0.10
+      AA:  0.20
+      A:   0.30
+      BBB: 0.20
+      BB:  0.12
+      B:   0.08
+    sector_exposure:              # issuer sector tags for signal overlay
+      - Technology
+      - Financials
+      - Health Care
+      - Energy
+      - Industrials
+      - Consumer Discretionary
+      - Consumer Staples
+
+  loans:
+    count: 80
+    nav_fraction: 0.22            # $11 M
+    description: >
+      Leveraged loans, floating-rate, SOFR + spread.
+      All BB or B rated.  Average spread: SOFR + 350 bps.
+    rating_distribution:
+      BB: 0.55
+      B:  0.45
+
+  equities:
+    count: 60
+    nav_fraction: 0.18            # $9 M
+    description: >
+      Long-only equity positions.  50 % drawn from the FinRisk-20 index;
+      remaining 50 % from broader S&P 500.  Position sizing proportional
+      to market-cap weight within each sub-basket.
+
+  fx_forwards:
+    count: 25
+    nav_fraction: 0.10            # $5 M notional
+    description: >
+      Short-dated (≤3 months) FX forwards used for currency hedging.
+      Predominantly EUR/USD, GBP/USD, JPY/USD, and CHF/USD.
+      Net delta is near zero by construction (hedging policy).
+    currency_pairs:
+      - EURUSD
+      - GBPUSD
+      - JPYUSD
+      - CHFUSD
+      - CADUSD
+
+  swaps:
+    count: 15
+    nav_fraction: 0.08            # $4 M DV01-equivalent
+    description: >
+      Plain-vanilla interest-rate swaps (receive-fixed, pay-SOFR).
+      Used to extend portfolio duration.  Maturities 2y, 5y, 10y, 30y.
+      Counterparty risk is modelled via CVA add-on in stress runs.
+    tenors: [2, 5, 10, 30]       # years
+
+# ── Risk limits (informational — enforced by Module A) ────────────────────────
+risk_limits:
+  max_single_name_pct: 0.05      # 5 % concentration cap per issuer
+  max_sector_pct: 0.30           # 30 % cap per sector
+  max_equity_beta: 1.20          # portfolio beta relative to S&P 500
+  min_ig_fraction: 0.60          # ≥ 60 % investment-grade across bonds + loans

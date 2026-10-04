@@ -1,0 +1,192 @@
+# FinRisk stress-test scenario library.
+#
+# Each scenario defines shock vectors applied to risk factors.
+# Module B reads this file and applies the shocks to the synthetic portfolio.
+#
+# Sign conventions
+# ────────────────
+# rates_bps         : change in risk-free rate in basis points
+#                     NEGATIVE = rates fall (flight-to-quality / easing)
+#                     POSITIVE = rates rise (tightening)
+# credit_spreads_bps: change in credit spreads in basis points
+#                     POSITIVE = spreads widen (risk-off)
+#                     NEGATIVE = spreads tighten (risk-on)
+# equity_shock_pct  : percentage change in equity prices (-0.20 = −20 %)
+# fx_usd_chg_pct    : change in USD strength vs basket
+#                     POSITIVE = USD strengthens (hurts EM, commodities)
+# commodity_chg_pct : percentage change in commodity prices (oil proxy)
+# vol_shock_bps     : change in implied volatility in basis points
+#                     POSITIVE = vol spike (risk-off)
+#
+# sector_equity_overrides: per-sector equity shock that overrides equity_shock_pct
+# ticker_overrides        : per-ticker equity shock (highest specificity)
+
+scenarios:
+
+  # ── Geopolitical ──────────────────────────────────────────────────────────
+  Geopolitical:
+    description: >
+      Major geopolitical shock (conflict escalation, sanctions, supply disruption).
+      Triggers classic flight-to-quality: Treasury yields fall, spreads widen,
+      equities sell off, USD strengthens, energy prices spike.
+    event_types: [Geopolitical]
+    shocks:
+      rates_bps: -25              # yields fall — flight to safety
+      credit_spreads_bps: +120    # significant spread widening
+      equity_shock_pct: -0.12
+      fx_usd_chg_pct: +0.03       # USD safe-haven bid
+      commodity_chg_pct: +0.15    # oil/energy spike
+      vol_shock_bps: +800
+    sector_equity_overrides:
+      Energy: +0.08               # energy names rally on supply shock
+      Industrials: -0.18          # supply chain disruption
+      Communication Services: -0.10
+
+  # ── Credit ────────────────────────────────────────────────────────────────
+  Credit:
+    description: >
+      Credit market stress: rating downgrades, default concerns, IG→HY migration.
+      Rates fall as central banks are expected to ease; spreads widen sharply.
+    event_types: [Credit]
+    shocks:
+      rates_bps: -15              # mild easing expectation
+      credit_spreads_bps: +200    # severe widening — HY most affected
+      equity_shock_pct: -0.09
+      fx_usd_chg_pct: +0.01
+      commodity_chg_pct: -0.05
+      vol_shock_bps: +600
+    sector_equity_overrides:
+      Financials: -0.16           # banks most exposed to credit deterioration
+      Consumer Discretionary: -0.13
+      Industrials: -0.10
+
+  # ── Regulatory ────────────────────────────────────────────────────────────
+  Regulatory:
+    description: >
+      Significant new regulation announced (antitrust, data privacy, price controls).
+      Rates broadly unchanged; targeted sector equity underperforms.
+    event_types: [Regulatory]
+    shocks:
+      rates_bps: 0
+      credit_spreads_bps: +20
+      equity_shock_pct: -0.04
+      fx_usd_chg_pct: 0.0
+      commodity_chg_pct: 0.0
+      vol_shock_bps: +200
+    sector_equity_overrides:
+      Technology: -0.12           # typical antitrust / data-privacy target
+      Health Care: -0.10          # drug pricing regulation
+      Financials: -0.06
+
+  # ── M&A ───────────────────────────────────────────────────────────────────
+  M&A:
+    description: >
+      Large merger or acquisition announcement.  Target rallies; acquirer
+      typically dips on dilution concerns.  Sector peers re-rate on deal premium.
+    event_types: [M&A]
+    shocks:
+      rates_bps: 0
+      credit_spreads_bps: +15    # slight widening for acquirer debt
+      equity_shock_pct: +0.02    # slight sector-wide re-rating
+      fx_usd_chg_pct: 0.0
+      commodity_chg_pct: 0.0
+      vol_shock_bps: +100
+
+  # ── Earnings ──────────────────────────────────────────────────────────────
+  Earnings:
+    description: >
+      Earnings surprise (positive or negative).  The direction of equity_shock_pct
+      is set per-signal by the signal's sentiment at runtime; this scenario
+      captures the vol/spread dynamics of a significant earnings event.
+    event_types: [Earnings]
+    shocks:
+      rates_bps: 0
+      credit_spreads_bps: +10
+      equity_shock_pct: -0.05    # conservative base; sign overridden by sentiment
+      fx_usd_chg_pct: 0.0
+      commodity_chg_pct: 0.0
+      vol_shock_bps: +300
+
+  # ── Macro ─────────────────────────────────────────────────────────────────
+  Macro:
+    description: >
+      Macro data surprise (GDP, CPI, unemployment).  Hawkish surprise → rates
+      rise, equities fall.  This vector models a hawkish upside inflation print.
+    event_types: [Macro]
+    shocks:
+      rates_bps: +40              # rates rise on inflation beat
+      credit_spreads_bps: +30
+      equity_shock_pct: -0.07
+      fx_usd_chg_pct: +0.02      # rate differential supports USD
+      commodity_chg_pct: -0.03
+      vol_shock_bps: +350
+    sector_equity_overrides:
+      Consumer Discretionary: -0.10  # higher rates hit rate-sensitive consumers
+      Financials: +0.03              # banks benefit from steeper curve
+
+  # ── Commodity ─────────────────────────────────────────────────────────────
+  Commodity:
+    description: >
+      Commodity price shock — oil/energy disruption.  Energy names rally;
+      industrials and consumer discretionary face margin pressure.
+    event_types: [Commodity]
+    shocks:
+      rates_bps: +10
+      credit_spreads_bps: +25
+      equity_shock_pct: -0.04
+      fx_usd_chg_pct: +0.01
+      commodity_chg_pct: +0.20   # significant oil spike
+      vol_shock_bps: +250
+    sector_equity_overrides:
+      Energy: +0.14
+      Industrials: -0.08
+      Consumer Staples: -0.06
+      Consumer Discretionary: -0.09
+
+  # ── Cyber ──────────────────────────────────────────────────────────────────
+  Cyber:
+    description: >
+      Major cyber incident: ransomware, data breach, or infrastructure attack.
+      Targets technology and financial sectors; operational disruption premium.
+    event_types: [Cyber]
+    shocks:
+      rates_bps: -5
+      credit_spreads_bps: +40
+      equity_shock_pct: -0.06
+      fx_usd_chg_pct: 0.0
+      commodity_chg_pct: 0.0
+      vol_shock_bps: +400
+    sector_equity_overrides:
+      Technology: -0.14
+      Financials: -0.10
+      Communication Services: -0.08
+
+  # ── Leadership ────────────────────────────────────────────────────────────
+  Leadership:
+    description: >
+      Sudden CEO / CFO departure or leadership scandal.  Targeted name sells off;
+      sector impact minimal unless the executive's departure signals deeper issues.
+    event_types: [Leadership]
+    shocks:
+      rates_bps: 0
+      credit_spreads_bps: +10
+      equity_shock_pct: -0.03   # mild sector contagion
+      fx_usd_chg_pct: 0.0
+      commodity_chg_pct: 0.0
+      vol_shock_bps: +150
+
+  # ── Product ───────────────────────────────────────────────────────────────
+  Product:
+    description: >
+      Product launch, recall, or clinical trial read-out.  Directional equity
+      shock set by signal sentiment; this captures the vol and spread baseline.
+    event_types: [Product]
+    shocks:
+      rates_bps: 0
+      credit_spreads_bps: +15
+      equity_shock_pct: -0.04   # base; sign overridden by sentiment
+      fx_usd_chg_pct: 0.0
+      commodity_chg_pct: 0.0
+      vol_shock_bps: +250
+    sector_equity_overrides:
+      Health Care: -0.08         # clinical trial failures / drug recalls
