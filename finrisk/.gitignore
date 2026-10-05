@@ -42,7 +42,7 @@ htmlcov/
 
 # Jupyter
 .ipynb_checkpoints/
-*.ipynb
+# *.ipynb intentionally NOT ignored — notebooks/train_impact_model_colab.ipynb is tracked
 
 # macOS
 .DS_Store
