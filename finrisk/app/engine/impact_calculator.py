@@ -165,14 +165,13 @@ class ImpactCalculator:
             source_count=source_count,
         )
 
-        # Blend in novelty as a multiplicative modifier on the raw XGBoost score.
-        # The model was trained on individual articles without an explicit novelty
-        # signal; we apply the same novelty floor as the rule-based path.
-        effective_novelty = max(novelty, 0.3)
-        diffusion_mod = 0.8 + 0.2 * diffusion_score
+        # For XGBoost, the raw score is already market-calibrated.
+        # Apply only a mild diffusion modifier (fresh multi-source events → slight boost)
+        # but do NOT multiply by novelty — the model already learned impact from real moves.
+        diffusion_mod = 0.9 + 0.1 * diffusion_score  # range [0.9, 1.0]
 
         raw_impact = self._xgb.predict(features)
-        impact = _clamp(raw_impact * effective_novelty * diffusion_mod, 1.0, 10.0)
+        impact = _clamp(raw_impact * diffusion_mod, 1.0, 10.0)
 
         low  = _clamp(impact - 1.5, 1.0, impact)
         high = _clamp(impact + 1.5, impact, 10.0)

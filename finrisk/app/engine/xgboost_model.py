@@ -203,6 +203,13 @@ class XGBoostImpactModel:
             ).reshape(1, -1)
 
             raw = float(self._model.predict(vector)[0])
+
+            # The v4 model was trained with impact_label in [1,10] but the
+            # underlying XGBoost learned residuals that output in [0.1, 1.0]
+            # range. Rescale: if raw < 2.0 it's in fractional form, multiply by 10.
+            if raw < 2.0:
+                raw = raw * 10.0
+
             return _clamp(raw, 1.0, 10.0)
 
         except Exception as exc:
@@ -223,32 +230,30 @@ class XGBoostImpactModel:
         """
         Extract the model's feature vector from an article dict and NLP outputs.
 
-        This is the inference-time feature extractor; it must produce the same
-        features as scripts/train_impact_model.py::build_features().
+        Produces the same 28 features as the v4 Colab training notebook:
+          sentiment, abs_sentiment, tone_positive, tone_negative,
+          source_count, is_after_hours, eps_surprise, has_eps, is_earnings,
+          days_since_last, et_<10 event types>, sec_<8 sectors>
 
         Parameters
         ──────────
-        article_dict  Arbitrary article dict from the ingestion pipeline.
-                      Expected optional keys: published_at, ticker_symbols,
-                      v2tone_positive, v2tone_negative, tone_overall,
-                      days_since_last_event.
-        sentiment     Signed sentiment score in [-1, 1] from FinBERT or rule-based.
+        article_dict  Article dict from the ingestion pipeline.
+        sentiment     Signed sentiment score in [-1, 1].
         event_type    One of the 10 canonical event type labels.
         source_count  Number of sources mentioning the event (default 1).
-
-        Returns a dict with all feature keys, safe to pass directly to predict().
         """
         features: dict[str, float] = {}
 
         # ── Core sentiment features ───────────────────────────────────────────
         sent = _clamp(float(sentiment), -1.0, 1.0)
-        features["sentiment"] = sent
+        features["sentiment"]     = sent
         features["abs_sentiment"] = abs(sent)
 
-        # V2Tone positive/negative: try article_dict first, then infer from sentiment
-        tone_positive = float(article_dict.get("v2tone_positive", article_dict.get("tone_positive", 0.0)) or 0.0)
-        tone_negative = float(article_dict.get("v2tone_negative", article_dict.get("tone_negative", 0.0)) or 0.0)
-        # If not available, use FinBERT sentiment as a proxy (scale to 0–10)
+        # V2Tone fields — proxy from FinBERT sentiment if not available
+        tone_positive = float(article_dict.get("tone_positive",
+                              article_dict.get("v2tone_positive", 0.0)) or 0.0)
+        tone_negative = float(article_dict.get("tone_negative",
+                              article_dict.get("v2tone_negative", 0.0)) or 0.0)
         if tone_positive == 0.0 and tone_negative == 0.0 and sent != 0.0:
             if sent > 0:
                 tone_positive = abs(sent) * 10.0
@@ -257,34 +262,41 @@ class XGBoostImpactModel:
         features["tone_positive"] = abs(tone_positive)
         features["tone_negative"] = abs(tone_negative)
 
-        # ── Source count ──────────────────────────────────────────────────────
-        features["source_count"] = float(max(1, int(source_count)))
-
-        # ── After-hours flag ──────────────────────────────────────────────────
+        # ── Source count + after-hours ────────────────────────────────────────
+        features["source_count"]  = float(max(1, int(source_count)))
         published_at = article_dict.get("published_at")
         features["is_after_hours"] = float(_is_after_hours(published_at)) if published_at else 0.0
 
-        # ── Days since last event per ticker ──────────────────────────────────
+        # ── EPS surprise features (strong predictor for earnings events) ──────
+        eps_surprise = article_dict.get("eps_surprise")
+        if eps_surprise is not None:
+            features["eps_surprise"] = _clamp(float(eps_surprise), -2.0, 2.0)
+            features["has_eps"]      = 1.0
+        else:
+            features["eps_surprise"] = 0.0
+            features["has_eps"]      = 0.0
+        features["is_earnings"] = 1.0 if event_type == "Earnings" else 0.0
+
+        # ── Days since last event ─────────────────────────────────────────────
         days_since = float(article_dict.get("days_since_last_event", 30.0) or 30.0)
         features["days_since_last"] = _clamp(days_since, 0.0, 90.0)
 
-        # ── Event type one-hot ────────────────────────────────────────────────
+        # ── Event type one-hot (et_ prefix — matches v4 training) ────────────
         for et in EVENT_TYPES:
-            col = f"event_type_{et.lower().replace('&', 'and').replace(' ', '_')}"
+            col = f"et_{et.lower().replace('&', 'and').replace(' ', '_')}"
             features[col] = 1.0 if et == event_type else 0.0
 
-        # ── Sector one-hot ────────────────────────────────────────────────────
+        # ── Sector one-hot (sec_ prefix — matches v4 training) ───────────────
         ticker = None
         tickers = article_dict.get("ticker_symbols", [])
         if tickers:
             ticker = tickers[0] if isinstance(tickers, list) else str(tickers)
         sector = _TICKER_SECTOR.get(str(ticker), "Technology") if ticker else "Technology"
-
         for sec in SECTORS:
-            col = f"sector_{sec.lower().replace(' ', '_')}"
+            col = f"sec_{sec.lower().replace(' ', '_')}"
             features[col] = 1.0 if sec == sector else 0.0
 
-        # Private hint for rule-based fallback (not a model feature — stripped at predict)
+        # Private hint for rule-based fallback (stripped before model inference)
         features["_event_type_hint"] = event_type  # type: ignore[assignment]
 
         return features
