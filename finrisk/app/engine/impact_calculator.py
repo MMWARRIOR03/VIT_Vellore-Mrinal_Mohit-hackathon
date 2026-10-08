@@ -69,7 +69,14 @@ class ImpactCalculator:
 
         effective_path = Path(model_path) if model_path is not None else _XGB_MODEL_PATH
 
-        if os.environ.get("MODEL_IMPACT", "").lower() == "xgboost":
+        # Read from pydantic settings (honours .env file properly)
+        try:
+            from app.config import get_settings
+            _use_xgb_setting = get_settings().model_impact.lower() == "xgboost"
+        except Exception:
+            _use_xgb_setting = os.environ.get("MODEL_IMPACT", "").lower() == "xgboost"
+
+        if _use_xgb_setting:
             xgb = XGBoostImpactModel()
             if xgb.load(model_path=effective_path, features_path=_XGB_FEATURES_PATH):
                 self._xgb = xgb

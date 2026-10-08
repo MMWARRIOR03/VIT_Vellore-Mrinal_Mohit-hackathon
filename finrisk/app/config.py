@@ -24,6 +24,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",          # silently ignore unknown env vars
         case_sensitive=False,
+        protected_namespaces=(), # suppress 'model_' namespace warning
     )
 
     # ── Redis ─────────────────────────────────────────────────────────────────
@@ -62,6 +63,12 @@ class Settings(BaseSettings):
     # ── NLP (placeholder for Task 2) ─────────────────────────────────────────
     nlp_model_name: str = Field(default="placeholder/finbert")
     nlp_confidence_threshold: float = Field(default=0.65, ge=0.0, le=1.0)
+
+    # ── Impact model (Task 5) ─────────────────────────────────────────────────
+    model_impact: str = Field(
+        default="rules",
+        description="Impact model backend: 'rules' | 'xgboost'. Set to 'xgboost' after training.",
+    )
 
     # ── Event classifier (Task 6) ─────────────────────────────────────────────
     event_classifier: str = Field(

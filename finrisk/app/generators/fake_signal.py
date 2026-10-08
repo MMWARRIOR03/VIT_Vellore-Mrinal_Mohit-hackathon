@@ -113,18 +113,26 @@ def _make_event_probs(primary: str) -> dict[str, float]:
     """
     Build a probability distribution over event types where ``primary`` wins.
     The remaining probability is distributed among a random 2-3 other types.
+    Always sums to exactly ≤ 1.0 by clamping the last entry.
     """
     primary_prob = round(random.uniform(0.50, 0.85), 4)
     others = [e for e in EVENT_TYPES if e != primary]
     n_others = random.randint(2, 4)
     other_types = random.sample(others, n_others)
     remainder = 1.0 - primary_prob
-    # Dirichlet-like split of the remainder
     shares = [random.random() for _ in other_types]
     total_shares = sum(shares)
     probs: dict[str, float] = {primary: primary_prob}
-    for t, s in zip(other_types, shares):
-        probs[t] = round((s / total_shares) * remainder, 4)
+    running_sum = primary_prob
+    for i, (t, s) in enumerate(zip(other_types, shares)):
+        if i < len(other_types) - 1:
+            v = round((s / total_shares) * remainder, 4)
+            probs[t] = v
+            running_sum += v
+        else:
+            # Last entry absorbs the exact remainder so sum never exceeds 1.0
+            last_val = round(1.0 - running_sum, 4)
+            probs[t] = max(0.0, last_val)
     return probs
 
 
