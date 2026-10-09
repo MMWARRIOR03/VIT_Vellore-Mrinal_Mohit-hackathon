@@ -45,6 +45,7 @@ from app.engine.event_classifier import RuleBasedEventClassifier
 from app.engine.deberta_classifier import DeBERTaEventClassifier
 from app.engine.novelty import NoveltyScorer
 from app.engine.impact_calculator import ImpactCalculator
+from app.engine.cluster_buffer import ClusterSentimentBuffer
 from app.diffusion.diffusion_scorer import DiffusionScorer
 from app.schema.risk_signal import RiskSignal, TickerRef, DiffusionInfo
 from app.streams.redis_streams import (
@@ -161,6 +162,10 @@ class NLPWorker:
         # ── DiffusionScorer ───────────────────────────────────────────────────
         self._diffusion_scorer = DiffusionScorer()
 
+        # ── Cluster sentiment buffer ──────────────────────────────────────────
+        self._cluster_buffer = ClusterSentimentBuffer(max_age_hours=2.0)
+        self._process_count: int = 0
+
         # ── Active classifier selection ───────────────────────────────────────
         # Check EVENT_CLASSIFIER env var; fall back to settings if available.
         classifier_choice = os.environ.get("EVENT_CLASSIFIER", "").lower()
@@ -256,17 +261,29 @@ class NLPWorker:
         # ── 7. Cluster ID (needed before diffusion record) ────────────────────
         cluster_id = _make_cluster_id(primary_ticker, event_type, ts_published)
 
+        # ── 7b. Cluster buffer: add this article and get aggregate ────────────
+        source_weight = float(article_dict.get("source_weight", 0.85))
+        self._cluster_buffer.add(
+            cluster_id, sentiment_score, sentiment_conf, source_weight, ts_published
+        )
+        agg_sentiment, agg_conf = self._cluster_buffer.get_aggregate(cluster_id)
+        cluster_source_count = self._cluster_buffer.get_source_count(cluster_id)
+
+        # Periodic cleanup (~every 100 articles)
+        self._process_count += 1
+        if self._process_count % 100 == 0:
+            self._cluster_buffer.cleanup_old()
+
         # ── 8. Diffusion (L1 + L2 via DiffusionScorer) ───────────────────────
         self._diffusion_scorer.record_arrival(cluster_id, ts_published)
-        source_count = int(article_dict.get("source_count", 1))
         diffusion = self._diffusion_scorer.compute(
-            cluster_id, source_count=source_count
+            cluster_id, source_count=cluster_source_count
         )
 
         # ── 9. Impact ─────────────────────────────────────────────────────────
         impact, impact_range = self._impact.calculate(
             event_type=event_type,
-            sentiment=sentiment_score,
+            sentiment=agg_sentiment,
             novelty=novelty,
             diffusion_score=diffusion.score,
         )
@@ -275,10 +292,9 @@ class NLPWorker:
         decay_halflife = RuleBasedEventClassifier.decay_halflife_for_event(event_type)
 
         # ── 11. Confidence ────────────────────────────────────────────────────
-        # Combine sentiment confidence, novelty, and source weight
-        source_weight = float(article_dict.get("source_weight", 0.85))
+        # Combine aggregated sentiment confidence, novelty, and source weight
         confidence = round(
-            0.5 * sentiment_conf + 0.3 * novelty + 0.2 * source_weight, 4
+            0.5 * agg_conf + 0.3 * novelty + 0.2 * source_weight, 4
         )
         confidence = max(0.0, min(1.0, confidence))
 
@@ -307,8 +323,8 @@ class NLPWorker:
             ts_processed=ts_processed,
             source=source,
             tickers=ticker_refs,
-            sentiment=round(float(sentiment_score), 4),
-            sentiment_conf=round(float(sentiment_conf), 4),
+            sentiment=round(float(agg_sentiment), 4),
+            sentiment_conf=round(float(agg_conf), 4),
             event_type=event_type,
             event_probs=event_probs,
             impact=round(impact, 4),
