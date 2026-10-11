@@ -398,12 +398,13 @@ class NLPWorker:
                 if signal is None:
                     continue
 
-                # Get Groq/Ollama explanation (non-blocking — use template if LLM unavailable)
-                if self._explainer is not None:
+                # Get Groq/Ollama explanation — only for high-impact signals
+                # to avoid hitting free-tier rate limits (30 RPM on Groq).
+                # Low-impact signals keep the template explanation.
+                if self._explainer is not None and signal.impact >= 6.0:
                     try:
                         headline = article_dict.get("title", "")
                         explanation = await self._explainer.explain(signal, headline=headline)
-                        # Replace template explanation with LLM explanation
                         signal = signal.model_copy(update={"explanation": explanation})
                     except Exception as exc:
                         logger.debug("LLM explanation failed for %s: %s", signal.event_id, exc)

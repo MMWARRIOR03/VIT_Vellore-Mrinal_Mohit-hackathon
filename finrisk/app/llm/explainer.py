@@ -30,6 +30,7 @@ through to the next provider.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -77,6 +78,9 @@ class SignalExplainer:
         self._ollama_model = ollama_model
         # In-process cache: cluster_id → explanation string
         self._cache: dict[str, str] = {}
+        # Rate-limit guard: track last Groq call time
+        self._last_groq_call: float = 0.0
+        self._min_interval_s: float = 3.0  # max ~20 RPM, well under 30 RPM free tier
 
         logger.info(
             "SignalExplainer initialised: provider=%r, groq_model=%r, ollama_model=%r",
@@ -127,6 +131,12 @@ class SignalExplainer:
 
     async def _explain_groq(self, signal: "RiskSignal", headline: str) -> str | None:
         """POST to Groq OpenAI-compatible chat completions endpoint."""
+        import time
+        # Enforce minimum inter-call interval to stay under free-tier 30 RPM
+        now = time.monotonic()
+        elapsed = now - self._last_groq_call
+        if elapsed < self._min_interval_s:
+            await asyncio.sleep(self._min_interval_s - elapsed)
         user_msg = _build_user_message(signal, headline)
         payload = {
             "model": self._groq_model,
@@ -155,6 +165,7 @@ class SignalExplainer:
                 return None
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
+            self._last_groq_call = time.monotonic()  # update after success
             return _extract_explanation(content)
         except httpx.TimeoutException:
             logger.warning("Groq request timed out after %.1fs", _GROQ_TIMEOUT_S)
