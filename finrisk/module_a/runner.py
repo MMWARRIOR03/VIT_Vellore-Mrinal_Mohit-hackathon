@@ -63,22 +63,29 @@ class ModuleARunner:
 
     async def start(self) -> None:
         """
-        Initialise the rebalancer and warm the price cache.
-
-        Call this before run_forever.  Separated so tests can call start()
-        and inspect the rebalancer state without running the loop.
+        Initialise the rebalancer, restore last persisted weights, warm price cache.
         """
         self._rebalancer = IndexRebalancer(config_path=self._config_path)
         all_tickers = list(self._rebalancer.get_current_weights().keys())
 
-        # Warm the price cache.  Failures are non-fatal (synthetic fallback).
+        # Restore last persisted weights from DuckDB so restarts don't reset to equal weight
+        try:
+            events = await self._db.get_rebalance_events(limit=1)
+            if events:
+                meta = events[0].get("meta", {})
+                after_weights = meta.get("after_weights", {})
+                if after_weights and len(after_weights) == len(all_tickers):
+                    self._rebalancer._current_weights.update(after_weights)
+                    logger.info(
+                        "ModuleARunner restored weights from last rebalance event."
+                    )
+        except Exception as exc:
+            logger.warning("Could not restore weights from DuckDB: %s", exc)
+
+        # Warm the price cache
         logger.info("ModuleARunner warming price cache for %d tickers…", len(all_tickers))
         self._rebalancer.price_cache.refresh(all_tickers)
-
-        logger.info(
-            "ModuleARunner started.  Universe: %d tickers.",
-            len(all_tickers),
-        )
+        logger.info("ModuleARunner started. Universe: %d tickers.", len(all_tickers))
 
     async def run_forever(self) -> None:
         """

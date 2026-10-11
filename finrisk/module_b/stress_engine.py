@@ -209,7 +209,7 @@ class StressEngine:
         )
 
         logger.info(
-            "StressResult (det): run_id=%s  scenario=%s  ΔNAV=$%,.0f (%.2f%%)  "
+            "StressResult (det): run_id=%s  scenario=%s  ΔNAV=$%.0f (%.2f%%)  "
             "tickers=%s",
             result.run_id,
             result.scenario_name,
@@ -255,7 +255,7 @@ class StressEngine:
             result.mc_expected_loss = mc_result.expected_loss
             result.mc_worst_loss = mc_result.worst_loss
             logger.info(
-                "MC metrics attached: run_id=%s  VaR95=$%,.0f  ES95=$%,.0f",
+                "MC metrics attached: run_id=%s  VaR95=$%.0f  ES95=$%.0f",
                 result.run_id,
                 result.mc_var_95,
                 result.mc_es_95,

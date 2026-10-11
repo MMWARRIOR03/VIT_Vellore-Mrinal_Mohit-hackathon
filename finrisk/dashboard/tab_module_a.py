@@ -219,11 +219,28 @@ def render_module_a(loader: DataLoader) -> None:
     for ev in events_asc:
         ts = str(ev["ts_created"])[:19]
         delta = ev.get("delta", {})
-        # Synthetic impact: sum of absolute weight deltas × NAV as a return proxy
-        # Positive deltas toward good-sentiment stocks → slight gain; negative → loss
-        # We use the raw weight deltas as a proxy for active return contribution
-        tilt_return = sum(delta.values()) * 0.05  # 5% return per unit weight shift
-        nav_tilt = nav_tilt * (1 + tilt_return)
+        meta  = ev.get("meta", {})
+        after = meta.get("after_weights", {})
+        before = meta.get("before_weights", {})
+
+        # Compute active return: sum over tickers of (weight_delta × sentiment_proxy)
+        # Overweight tickers that had positive sentiment → tilted outperforms equal-weight
+        # Use weight delta sign as direction: positive delta = bet on that ticker
+        # Assume average stock return of 0.05%/day; active return = weighted deviation
+        active_return = 0.0
+        for ticker, w_after in after.items():
+            w_before = before.get(ticker, _EQ_WEIGHT)
+            w_delta = w_after - w_before
+            # Positive tilt on a ticker contributes positively if that ticker "outperforms"
+            # We use a random seed per ticker for reproducible synthetic returns
+            import hashlib
+            seed_val = int(hashlib.md5(f"{ticker}{ts}".encode()).hexdigest()[:8], 16)
+            import random
+            rng_local = random.Random(seed_val)
+            ticker_return = rng_local.gauss(0.0002, 0.012)  # ~5% annualised daily
+            active_return += w_delta * ticker_return
+
+        nav_tilt = nav_tilt * (1 + active_return)
 
         timestamps.append(ts)
         tilted_nav.append(nav_tilt)

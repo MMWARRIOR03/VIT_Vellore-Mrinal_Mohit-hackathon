@@ -125,7 +125,7 @@ class ModuleBRunner:
             result = await self._engine.on_signal(signal)
             if result is not None:
                 logger.info(
-                    "Stress test completed: run_id=%s  ΔNAV=$%,.0f (%.2f%%)",
+                    "Stress test completed: run_id=%s  ΔNAV=$%.0f (%.2f%%)",
                     result.run_id,
                     result.delta_nav,
                     result.delta_pct,

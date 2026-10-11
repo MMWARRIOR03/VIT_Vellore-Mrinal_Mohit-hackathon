@@ -432,7 +432,7 @@ class MonteCarloEngine:
         metrics = self._compute_metrics(losses)
 
         logger.info(
-            "MC run complete: n_paths=%d  E[loss]=$%,.0f  VaR95=$%,.0f  ES95=$%,.0f",
+            "MC run complete: n_paths=%d  E[loss]=$%.0f  VaR95=$%.0f  ES95=$%.0f",
             self.n_paths,
             metrics["expected_loss"],
             metrics["var_95"],

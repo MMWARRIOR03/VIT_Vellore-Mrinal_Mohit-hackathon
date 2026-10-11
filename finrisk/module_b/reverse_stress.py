@@ -224,7 +224,7 @@ class ReverseStressTester:
             )
 
         logger.info(
-            "Reverse stress [%s]: breach_impact=%.2f  E[loss]=$%,.0f (%.1f%% NAV)  limit=%.1f%%",
+            "Reverse stress [%s]: breach_impact=%.2f  E[loss]=$%.0f (%.1f%% NAV)  limit=%.1f%%",
             event_type,
             breach_impact,
             expected_loss,

@@ -32,7 +32,9 @@ def _fmt_m(val: float | None, prefix: str = "$") -> str:
 def _fmt_pct(val: float | None) -> str:
     if val is None:
         return "—"
-    return f"{val * 100:+.2f}%"
+    # delta_pct from valuation engine is already in percent units (e.g. -5.0 = -5%)
+    # Do NOT multiply by 100 again
+    return f"{val:+.2f}%"
 
 
 def render_module_b(loader: DataLoader) -> None:
@@ -193,7 +195,8 @@ def render_module_b(loader: DataLoader) -> None:
             delta=delta_fmt if delta_nav is not None else None,
         )
     with nav_c4:
-        pct_fmt = f"{delta_pct * 100:+.2f}%" if delta_pct is not None else "—"
+        # delta_pct is already in percent units from the valuation engine
+        pct_fmt = f"{delta_pct:+.2f}%" if delta_pct is not None else "—"
         st.metric(
             "Δ%",
             pct_fmt,
@@ -223,17 +226,12 @@ def render_module_b(loader: DataLoader) -> None:
 
     if var_95 is not None:
         st.markdown("##### Monte Carlo Loss Distribution")
-        # Reconstruct a synthetic loss sample for the histogram using
-        # var_95, es_95, and expected_loss as distribution anchors
+        st.caption("⚠️ Chart reconstructed from VaR/ES summary statistics — not raw simulation paths.")
         import numpy as np
-
         rng = np.random.default_rng(seed=42)
-        # Approximate: losses ~ truncated normal anchored to expected_loss
         exp_loss = mc_exp_loss or abs(delta_nav or 0)
-        worst = mc_worst or abs(var_95) * 1.5 if var_95 else abs(exp_loss) * 2
         std_est = abs(var_95 - exp_loss) / 1.645 if var_95 and exp_loss else abs(exp_loss) * 0.3
         losses = rng.normal(loc=-abs(exp_loss), scale=max(abs(std_est), 1.0), size=2000).tolist()
-
         fig_mc = make_loss_distribution_chart(
             losses=losses,
             var_95=-abs(var_95) if var_95 else None,
@@ -261,7 +259,7 @@ def render_module_b(loader: DataLoader) -> None:
 
         st.info(f"🔍 **{reverse_result.narrative}**")
 
-        gauge_col, _ = st.columns([1, 1])
+        gauge_col, info_col = st.columns([1, 1])
         with gauge_col:
             fig_gauge = make_gauge_chart(
                 value=reverse_result.breach_impact,
@@ -270,6 +268,10 @@ def render_module_b(loader: DataLoader) -> None:
                 title="Breach Threshold Impact",
             )
             st.plotly_chart(fig_gauge, use_container_width=True)
+        with info_col:
+            ci = reverse_result.confidence_interval
+            st.metric("Search bracket", f"{ci[0]:.1f} – {ci[1]:.1f}")
+            st.caption("Binary search bracket (±precision/2), not a statistical confidence interval.")
 
     # ── Row 6: Historical stress runs table ───────────────────────────────────
     st.markdown("##### Historical Stress Runs (last 10)")
