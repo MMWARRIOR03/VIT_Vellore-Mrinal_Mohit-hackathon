@@ -66,7 +66,7 @@ def render_module_a(loader: DataLoader) -> None:
         line_color="#94A3B8",
         annotation_text=f"Equal weight ({_EQ_WEIGHT*100:.1f}%)",
         annotation_font_color="#94A3B8",
-        annotation_position="top right",
+        annotation_position="top left",
     )
     fig_weights.update_layout(
         height=540,
@@ -176,7 +176,8 @@ def render_module_a(loader: DataLoader) -> None:
         )
 
     # ── Row 5: Synthetic NAV comparison ──────────────────────────────────────
-    st.markdown("#### Tilted vs Equal-Weight NAV ($10M synthetic)")
+    st.markdown("#### Illustrative Tilted vs Equal-Weight NAV ($10M synthetic)")
+    st.caption("Illustrative returns are deterministic placeholders, not historical market performance.")
 
     _NAV_BASE = 10_000_000.0
 

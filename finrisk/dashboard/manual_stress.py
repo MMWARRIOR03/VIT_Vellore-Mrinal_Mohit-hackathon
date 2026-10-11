@@ -162,7 +162,7 @@ def run_manual_stress(
         logger.warning("Manual reverse stress failed: %s", exc)
 
     logger.info(
-        "Manual stress [%s] impact=%.1f: ΔNAV=$%,.0f (%.2f%%)",
+        "Manual stress [%s] impact=%.1f: ΔNAV=$%.0f (%.2f%%)",
         event_type,
         impact_clamped,
         stress_result.delta_nav,

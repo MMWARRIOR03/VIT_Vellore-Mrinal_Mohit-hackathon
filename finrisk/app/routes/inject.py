@@ -6,16 +6,16 @@ Accepts arbitrary headline text and runs the full FinRisk pipeline synchronously
   1. Build an article dict from the request
   2. NLPWorker.process_one() → RiskSignal
   3. Persist signal to DuckDB
-  4. Publish signal to processed.signals stream
-  5. Run Module B stress test (if impact >= 7.0)
-  6. Run Module A rebalancer
-  7. Get LLM explanation (Groq → Ollama → template)
-  8. Return everything in InjectResponse
+  4. Run Module B stress test (if impact >= 7.0)
+  5. Run Module A rebalancer
+  6. Get LLM explanation (Groq → Ollama → template)
+  7. Return everything in InjectResponse
 
 The endpoint is designed to work end-to-end on a clean clone with Redis
-running and no external APIs configured.  Stress and rebalance results are
-None when their gating conditions aren't met — that's expected behaviour, not
-an error.
+running and no external APIs configured. It processes synchronously so its
+response is not duplicated by the background stream consumers. Stress and
+rebalance results are None when their gating conditions aren't met — that's
+expected behaviour, not an error.
 """
 
 from __future__ import annotations
@@ -125,13 +125,10 @@ async def inject_text(body: InjectRequest, request: Request) -> InjectResponse:
         logger.error("DuckDB write failed in /inject: %s", exc)
         # Non-fatal — continue so the response is still useful
 
-    # ── 4. Publish to processed.signals ───────────────────────────────────────
-    try:
-        await redis.publish("processed.signals", json.loads(signal.model_dump_json()))
-    except Exception as exc:
-        logger.error("Redis publish failed in /inject: %s", exc)
-
-    # ── 5. Module B stress test ────────────────────────────────────────────────
+    # ── 4. Module B stress test ────────────────────────────────────────────────
+    # /inject runs both modules synchronously so it can return their results.
+    # Do not also publish this signal to processed.signals: the background
+    # runners would process it a second time and create duplicate outputs.
     stress_result_dict: dict[str, Any] | None = None
     if signal.impact >= 7.0:
         try:
@@ -142,13 +139,13 @@ async def inject_text(body: InjectRequest, request: Request) -> InjectResponse:
                 await stress_engine.persist_result(stress_result)
                 stress_result_dict = stress_result.to_dict()
                 logger.info(
-                    "/inject stress test: run_id=%s ΔNAV=$%,.0f",
+                    "/inject stress test: run_id=%s ΔNAV=$%.0f",
                     stress_result.run_id, stress_result.delta_nav,
                 )
         except Exception as exc:
             logger.error("Module B stress test failed in /inject: %s", exc)
 
-    # ── 6. Module A rebalancer ─────────────────────────────────────────────────
+    # ── 5. Module A rebalancer ─────────────────────────────────────────────────
     rebalance_dict: dict[str, Any] | None = None
     try:
         rebalancer = await _get_or_create_rebalancer(request, db, redis)
@@ -164,7 +161,7 @@ async def inject_text(body: InjectRequest, request: Request) -> InjectResponse:
     except Exception as exc:
         logger.error("Module A rebalancer failed in /inject: %s", exc)
 
-    # ── 7. LLM explanation ─────────────────────────────────────────────────────
+    # ── 6. LLM explanation ─────────────────────────────────────────────────────
     explanation: str | None = None
     explainer = getattr(request.app.state, "explainer", None)
     if explainer is not None:
@@ -173,7 +170,7 @@ async def inject_text(body: InjectRequest, request: Request) -> InjectResponse:
         except Exception as exc:
             logger.error("LLM explainer failed in /inject: %s", exc)
 
-    # ── 8. Return response ─────────────────────────────────────────────────────
+    # ── 7. Return response ─────────────────────────────────────────────────────
     # Use the explanation from the LLM to enrich the signal dict in the response.
     signal_dict = json.loads(signal.model_dump_json())
     if explanation:

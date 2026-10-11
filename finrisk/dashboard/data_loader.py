@@ -54,7 +54,9 @@ class DataLoader:
         result = _get("/signals", params)
         if isinstance(result, list):
             return result
-        return []
+        # Keep dashboard charts useful when the API is restarting or unavailable.
+        # This mirrors the existing read-only fallback used for stress runs.
+        return _read_signals(limit, ticker)
 
     # ── Articles ─────────────────────────────────────────────────────────────
 
@@ -228,6 +230,31 @@ def _read_stress_runs(limit: int) -> list[dict]:
             "meta": json.loads(meta_json) if meta_json else {},
         })
     return results
+
+
+def _read_signals(limit: int, ticker: str | None = None) -> list[dict]:
+    """Read persisted signal payloads when the API endpoint is unavailable."""
+    if ticker and ticker != "All":
+        symbol = ticker.upper()
+        rows = _try_duckdb_query(
+            """SELECT payload FROM signals
+               WHERE ticker_csv = ? OR ticker_csv LIKE ? OR ticker_csv LIKE ? OR ticker_csv LIKE ?
+               ORDER BY ts_published DESC LIMIT ?""",
+            [symbol, f"{symbol},%", f"%,{symbol}", f"%,{symbol},%", limit],
+        )
+    else:
+        rows = _try_duckdb_query(
+            "SELECT payload FROM signals ORDER BY ts_published DESC LIMIT ?", [limit]
+        )
+    if rows is None:
+        return []
+    signals: list[dict] = []
+    for (payload,) in rows:
+        try:
+            signals.append(json.loads(payload))
+        except (TypeError, json.JSONDecodeError) as exc:
+            logger.warning("Skipping malformed persisted signal: %s", exc)
+    return signals
 
 
 def _read_rebalance_events(limit: int) -> list[dict]:

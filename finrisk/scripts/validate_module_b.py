@@ -222,7 +222,7 @@ def run_scenario(engine, scenario: dict) -> dict:
     }
 
     logger.info(
-        "  %s: ΔNAV=$%,.0f (%.2f%%)  VaR95=$%,.0f  ES95=$%,.0f",
+        "  %s: ΔNAV=$%.0f (%.2f%%)  VaR95=$%.0f  ES95=$%.0f",
         scenario["name"],
         delta_nav,
         delta_pct,
@@ -360,7 +360,7 @@ def main() -> None:
     engine.mc_engine = mc_engine
 
     portfolio_nav = portfolio.compute_nav()
-    logger.info("Portfolio NAV: $%,.0f", portfolio_nav)
+    logger.info("Portfolio NAV: $%.0f", portfolio_nav)
 
     # Run all reference scenarios
     scenario_results: list[dict] = []

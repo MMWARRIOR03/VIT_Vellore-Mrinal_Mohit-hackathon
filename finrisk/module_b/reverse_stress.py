@@ -16,7 +16,7 @@ The result reports:
   - breach_impact:            the minimum impact at which the limit is breached
   - expected_loss_at_breach:  mean MC loss at that impact
   - expected_loss_pct:        that loss as a fraction of NAV
-  - confidence_interval:      90 % CI on breach_impact (±half-precision width)
+  - confidence_interval:      numerical search bracket around breach_impact
   - narrative:                plain-English summary
 """
 
@@ -48,7 +48,8 @@ class ReverseStressResult:
     breach_impact           : minimum impact score (1–10) that breaches the limit
     expected_loss_at_breach : mean MC expected loss at breach_impact (USD)
     expected_loss_pct       : expected_loss_at_breach / NAV
-    confidence_interval     : 90 % CI on breach_impact as (lo, hi)
+    confidence_interval     : numerical search bracket around breach_impact as (lo, hi);
+                              this is not a statistical confidence interval
     narrative               : plain-English description of the result
     """
 
@@ -190,7 +191,7 @@ class ReverseStressTester:
 
         expected_loss_pct = expected_loss / nav if nav > 0 else 0.0
 
-        # ── 90 % CI: ±precision/2 around the found breach point ───────────────
+        # Numerical resolution bracket: ±precision/2 around the search result.
         ci_half = precision / 2.0
         ci = (
             max(1.0, breach_impact - ci_half),

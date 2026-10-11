@@ -1,11 +1,10 @@
 """
 PriceCache — recent closing prices for vol estimation.
 
-yfinance is an optional dependency.  When it is unavailable (no install,
-network outage, or API limit), the cache silently falls back to a deterministic
-synthetic random walk seeded from the ticker string.  This keeps the rebalancer
-functional in CI and offline environments while producing the same vol estimate
-for the same ticker across runs.
+yfinance is opt-in via ``PRICE_CACHE_LIVE_ENABLED=true``. By default the cache
+uses a deterministic synthetic random walk seeded from the ticker string, which
+keeps API startup fast and reliable in CI and offline-demo environments. Live
+fetch failures also fall back to that deterministic series.
 
 Cache TTL is 1 hour.  A full refresh downloads 30 days of daily closes.
 """
@@ -15,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
+import os
 import random
 from datetime import datetime, timezone
 from typing import Optional
@@ -34,21 +34,40 @@ class PriceCache:
     the n most recent prices without reversing.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, use_live_prices: bool | None = None) -> None:
         # {ticker: [price_newest_first, ...]}
         self._cache: dict[str, list[float]] = {}
         self._last_refresh: Optional[datetime] = None
+        # Offline data is the safe default for a demo and avoids serial network
+        # timeouts delaying API startup. Set PRICE_CACHE_LIVE_ENABLED=true to
+        # opt into yfinance downloads.
+        if use_live_prices is None:
+            use_live_prices = os.getenv("PRICE_CACHE_LIVE_ENABLED", "false").lower() in {
+                "1", "true", "yes", "on"
+            }
+        self._use_live_prices = use_live_prices
 
     # ── Public interface ──────────────────────────────────────────────────────
 
     def refresh(self, tickers: list[str]) -> None:
         """
-        Attempt to download the last 30 days of daily closes from yfinance.
+        Populate the last 30 days of daily closes.
 
-        Per-ticker failures are caught and logged; the ticker falls back to
-        synthetic prices.  The cache TTL is reset on completion regardless
-        of individual ticker outcomes.
+        Uses deterministic synthetic prices unless live prices are explicitly
+        enabled. Per-ticker live-fetch failures fall back to synthetic prices.
+        The cache TTL is reset on completion regardless of source.
         """
+        if not self._use_live_prices:
+            for ticker in tickers:
+                self._cache[ticker] = self._synthetic_prices(ticker)
+            self._last_refresh = datetime.now(tz=timezone.utc)
+            logger.info(
+                "PriceCache using deterministic synthetic prices for %d tickers "
+                "(set PRICE_CACHE_LIVE_ENABLED=true for yfinance).",
+                len(tickers),
+            )
+            return
+
         try:
             import yfinance as yf  # type: ignore[import]
         except ImportError:

@@ -51,6 +51,8 @@ _generator_task: asyncio.Task | None = None
 _ingestion_task: asyncio.Task | None = None
 _nlp_task: asyncio.Task | None = None
 _replay_task: asyncio.Task | None = None
+_module_a_task: asyncio.Task | None = None
+_module_b_task: asyncio.Task | None = None
 
 
 def get_db() -> DuckDBStore:
@@ -70,7 +72,7 @@ def get_redis() -> RedisStreamClient:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _db_store, _redis_client, _generator_task, _ingestion_task
-    global _nlp_task, _replay_task
+    global _nlp_task, _replay_task, _module_a_task, _module_b_task
 
     logger.info("FinRisk API starting up …")
 
@@ -87,6 +89,30 @@ async def lifespan(app: FastAPI):
     # 3. Attach singletons to app state so routes can access them via request.app
     app.state.db = _db_store
     app.state.redis = _redis_client
+
+    # Start both downstream consumers before producers begin publishing.  The
+    # replay/NLP pipelines only publish processed signals; without these
+    # runners, qualifying signals were stored but never produced stress runs.
+    from module_a.runner import ModuleARunner
+    from module_b.runner import ModuleBRunner
+
+    module_a_runner = ModuleARunner(db=_db_store, redis=_redis_client)
+    module_b_runner = ModuleBRunner(db=_db_store, redis=_redis_client)
+    await module_a_runner.start()
+    await module_b_runner.start()
+    app.state.module_a_runner = module_a_runner
+    app.state.module_b_runner = module_b_runner
+    # The route uses these shared, stateful instances for synchronous /inject
+    # responses as well.
+    app.state.rebalancer = module_a_runner.rebalancer
+    app.state.stress_engine = module_b_runner.engine
+    _module_a_task = asyncio.create_task(
+        module_a_runner.run_forever(), name="module-a-runner"
+    )
+    _module_b_task = asyncio.create_task(
+        module_b_runner.run_forever(), name="module-b-runner"
+    )
+    logger.info("Module A and Module B runners started")
 
     # 4. Fake signal generator
     if settings.fake_signal_enabled:
@@ -158,11 +184,17 @@ async def lifespan(app: FastAPI):
     # ── Shutdown ──────────────────────────────────────────────────────────────
     logger.info("FinRisk API shutting down …")
 
+    for runner in (getattr(app.state, "module_a_runner", None), getattr(app.state, "module_b_runner", None)):
+        if runner is not None:
+            await runner.stop()
+
     for task_name, task in [
         ("replay-runner", _replay_task),
         ("ingestion-pipeline", _ingestion_task),
         ("nlp-worker", _nlp_task),
         ("fake-signal-generator", _generator_task),
+        ("module-b-runner", _module_b_task),
+        ("module-a-runner", _module_a_task),
     ]:
         if task is not None and not task.done():
             task.cancel()
