@@ -238,7 +238,7 @@ def make_weight_history_chart(
         fig.add_trace(
             go.Scatter(
                 x=sub["ts"],
-                y=sub["weight"],
+                y=sub["weight"] * 100,  # convert to percentage
                 name=ticker,
                 mode="lines",
                 stackgroup="one",
@@ -250,7 +250,8 @@ def make_weight_history_chart(
     fig.update_layout(
         title="Portfolio Weight History",
         xaxis_title="Time",
-        yaxis_title="Weight",
+        yaxis_title="Weight (%)",
+        yaxis=dict(gridcolor="#1E293B", ticksuffix="%", range=[0, 105]),
         height=360,
         legend=dict(
             orientation="h",
@@ -263,7 +264,6 @@ def make_weight_history_chart(
         paper_bgcolor="#0F172A",
         font=dict(color="#E2E8F0"),
         xaxis=dict(gridcolor="#1E293B"),
-        yaxis=dict(gridcolor="#1E293B"),
     )
     return fig
 
