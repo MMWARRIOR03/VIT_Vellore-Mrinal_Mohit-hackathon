@@ -162,6 +162,24 @@ class NLPWorker:
         # ── DiffusionScorer ───────────────────────────────────────────────────
         self._diffusion_scorer = DiffusionScorer()
 
+        # ── LLM Explainer (optional — picked up from app.state if available) ──
+        self._explainer = None
+        try:
+            from app.config import get_settings
+            s = get_settings()
+            if s.llm_provider != "none":
+                from app.llm.explainer import SignalExplainer
+                self._explainer = SignalExplainer(
+                    provider=s.llm_provider,
+                    groq_api_key=s.groq_api_key,
+                    groq_model=s.groq_model,
+                    ollama_base_url=s.ollama_base_url,
+                    ollama_model=s.ollama_model,
+                )
+                logger.info("NLPWorker: LLM explainer active (provider=%r)", s.llm_provider)
+        except Exception as exc:
+            logger.debug("NLPWorker: LLM explainer not available: %s", exc)
+
         # ── Cluster sentiment buffer ──────────────────────────────────────────
         self._cluster_buffer = ClusterSentimentBuffer(max_age_hours=2.0)
         self._process_count: int = 0
@@ -374,13 +392,21 @@ class NLPWorker:
                 continue
 
             for msg_id, payload in batch:
-                # The stream may carry the article as a nested "data" key
-                # (already decoded by StreamConsumer) or as a flat dict.
                 article_dict = payload
 
                 signal = self.process_one(article_dict)
                 if signal is None:
                     continue
+
+                # Get Groq/Ollama explanation (non-blocking — use template if LLM unavailable)
+                if self._explainer is not None:
+                    try:
+                        headline = article_dict.get("title", "")
+                        explanation = await self._explainer.explain(signal, headline=headline)
+                        # Replace template explanation with LLM explanation
+                        signal = signal.model_copy(update={"explanation": explanation})
+                    except Exception as exc:
+                        logger.debug("LLM explanation failed for %s: %s", signal.event_id, exc)
 
                 # Persist to DuckDB
                 try:

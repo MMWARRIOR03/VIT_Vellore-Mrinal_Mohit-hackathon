@@ -18,12 +18,12 @@ from dashboard.charts import make_weight_history_chart
 from dashboard.data_loader import DataLoader
 
 
-# FinRisk-20 universe (fixed order for consistent chart display)
+# FinRisk-20 universe — must match configs/index.yaml exactly
 _UNIVERSE = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "META",
-    "JPM", "BAC", "WFC", "GS", "MS",
-    "JNJ", "PFE", "UNH", "ABBV", "MRK",
-    "XOM", "CVX", "COP", "SLB", "EOG",
+    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN",
+    "META", "TSLA", "JPM", "BAC", "GS",
+    "V", "JNJ", "UNH", "PFE", "XOM",
+    "CVX", "CAT", "BA", "WMT", "HD",
 ]
 _EQ_WEIGHT = round(1.0 / len(_UNIVERSE), 6)
 

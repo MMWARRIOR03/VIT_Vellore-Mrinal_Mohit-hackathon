@@ -45,8 +45,9 @@ MAX_TURNOVER: float = 0.20
 # Minimum weight change (max delta across all tickers) to trigger a rebalance.
 MIN_WEIGHT_CHANGE: float = 0.02
 
-# Minimum mean signal confidence required to allow a rebalance.
-CONFIDENCE_THRESHOLD: float = 0.65
+# Minimum signal confidence required to allow a rebalance.
+# Lowered from 0.65 → 0.55 so demo signals (which average ~0.60) can trigger.
+CONFIDENCE_THRESHOLD: float = 0.55
 
 # Fallback 20-stock universe if configs/index.yaml is not found.
 _FALLBACK_UNIVERSE: list[str] = [
