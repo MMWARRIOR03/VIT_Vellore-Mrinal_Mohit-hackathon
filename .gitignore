@@ -2,3 +2,64 @@
 chatgpt.md
 claude.md
 .DS_Store
+commit_task.sh
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Environment / secrets
+.env
+
+# DuckDB database (runtime data, not source)
+data/finrisk.duckdb
+data/finrisk.duckdb.wal
+
+# Training data (large, generated from scripts)
+data/training/
+data/results/
+
+# Trained model artifacts (large binary files — regenerate with scripts)
+data/models/*.pkl
+data/models/*.joblib
+data/models/*.pt
+data/models/*.bin
+data/models/event_deberta/
+
+# Keep model directory stubs
+!data/models/.gitkeep
+!data/sample/.gitkeep
+
+# Pytest / coverage
+.pytest_cache/
+htmlcov/
+.coverage
+*.cover
+
+# Jupyter
+.ipynb_checkpoints/
+# *.ipynb intentionally NOT ignored — notebooks/train_impact_model_colab.ipynb is tracked
+
+# macOS
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Docker volumes
+redis-data/
