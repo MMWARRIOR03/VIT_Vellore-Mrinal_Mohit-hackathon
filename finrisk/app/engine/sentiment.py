@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
-# Model cache directory relative to project root
-_MODEL_CACHE_DIR = Path("data/models")
+# Model cache directory — use absolute path so it works regardless of cwd
+_MODEL_CACHE_DIR = Path(__file__).resolve().parents[3] / "data" / "models"
 _FINBERT_MODEL_ID = "ProsusAI/finbert"
 
 # ── Transformers availability flag ────────────────────────────────────────────
