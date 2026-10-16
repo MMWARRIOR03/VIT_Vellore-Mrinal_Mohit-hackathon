@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
-# Model cache directory — use absolute path so it works regardless of cwd
-_MODEL_CACHE_DIR = Path(__file__).resolve().parents[3] / "data" / "models"
+# Model cache directory — absolute path pointing to finrisk/data/models/
+_MODEL_CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "models"
 _FINBERT_MODEL_ID = "ProsusAI/finbert"
 
 # ── Transformers availability flag ────────────────────────────────────────────
@@ -222,15 +222,33 @@ class FinBERTSentimentModel:
 
             logger.info("Loading FinBERT from %s (cache: %s)", self._model_id, self._cache_dir)
             self._cache_dir.mkdir(parents=True, exist_ok=True)
-            self._tokenizer = AutoTokenizer.from_pretrained(
-                self._model_id,
-                cache_dir=str(self._cache_dir),
-            )
-            self._model = AutoModelForSequenceClassification.from_pretrained(
-                self._model_id,
-                cache_dir=str(self._cache_dir),
-                output_hidden_states=True,
-            )
+
+            # Try loading from cache first — never go to network if files exist
+            _load_kwargs = {
+                "cache_dir": str(self._cache_dir),
+                "local_files_only": True,
+            }
+            try:
+                self._tokenizer = AutoTokenizer.from_pretrained(
+                    self._model_id, **_load_kwargs
+                )
+                self._model = AutoModelForSequenceClassification.from_pretrained(
+                    self._model_id,
+                    output_hidden_states=True,
+                    **_load_kwargs,
+                )
+            except Exception:
+                # Cache miss — allow one network download, then it will be cached
+                logger.info("FinBERT not in cache — downloading once...")
+                _load_kwargs["local_files_only"] = False
+                self._tokenizer = AutoTokenizer.from_pretrained(
+                    self._model_id, **_load_kwargs
+                )
+                self._model = AutoModelForSequenceClassification.from_pretrained(
+                    self._model_id,
+                    output_hidden_states=True,
+                    **_load_kwargs,
+                )
             self._model.eval()  # inference mode
             self._loaded = True
             logger.info("FinBERT loaded successfully (CPU)")
