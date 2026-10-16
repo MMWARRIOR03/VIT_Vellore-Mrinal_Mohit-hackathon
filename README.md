@@ -286,7 +286,7 @@ Most approaches score each article independently. FinRisk implements a **Hawkes-
 
 - **Portfolio**: 300 synthetic positions — 120 bonds, 80 loans, 60 equities, 25 FX forwards, 15 IR swaps (~$60M NAV, seed=42 deterministic)
 - **Correct financial mathematics**: bonds use duration-convexity (`ΔP = −D·Δr + ½C·Δr²`), loans use `ΔEL = (PD_stressed − PD_base) × LGD × EAD`, swaps use `ΔV = −DV01 × Δr_bps`. Rate signs are calibrated by event type — Geopolitical triggers flight-to-quality (rates *fall*), not a naive rate-rise shock.
-- **Monte Carlo**: 10,000 paths, Student-t(df=5) fat tails, Cholesky-correlated 5-factor model, propagates NLP model uncertainty via `impact_range` sampling
+- **Monte Carlo**: 10,000 paths, Student-t(df=5) fat tails (chosen over Gaussian to capture the leptokurtic return distributions empirically observed in financial markets), Cholesky-correlated 5-factor model, propagates NLP model uncertainty via `impact_range` sampling
 - **Reverse stress test**: binary search for the minimum impact that breaches a configurable loss limit — a feature directly from Basel stress testing methodology
 - **Example output**: Geopolitical event (impact 8.5, sentiment −0.80) → deterministic ΔNAV −$1.04M (−1.75%), MC VaR95 $1.93M, ES95 $2.57M
 
