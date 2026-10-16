@@ -10,11 +10,20 @@
 
 ## 1. Project Overview / Problem Statement & Approach
 
-Financial institutions are drowning in unstructured text — news articles, SEC filings, social media posts — with no automated way to convert them into actionable risk signals in real time. A credit analyst at a wholesale bank today must manually scan hundreds of headlines to assess whether any event materially impacts their loan book or trading portfolio. This latency is a direct business risk.
+Financial institutions are drowning in unstructured text — news articles, SEC filings, social media posts — with no automated way to convert them into actionable risk signals in real time. A credit analyst at a wholesale bank today must manually scan hundreds of headlines to assess whether any event materially impacts their loan book or trading portfolio. This latency is a direct business risk: by the time a risk manager quantifies exposure to a breaking geopolitical event, the market has already moved.
 
-**FinRisk** solves this by building a unified AI/NLP Risk Engine that ingests text from four live sources (GDELT global news, SEC EDGAR filings, StockTwits, Kaggle tweet replay), extracts structured risk signals using FinBERT sentiment + XGBoost impact scoring, and routes those signals into two downstream financial modules: a tactical index rebalancer (Module A) and an event-driven portfolio stress tester with Monte Carlo simulation (Module B).
+**FinRisk** solves this by building a unified AI/NLP Risk Engine that ingests text from four live sources (GDELT global news, SEC EDGAR filings, StockTwits, Kaggle tweet replay), extracts structured risk signals, and routes those signals into two downstream financial modules: a tactical index rebalancer (Module A) and an event-driven wholesale portfolio stress tester with Monte Carlo simulation (Module B).
 
-The system is designed to be reproducible on any evaluator machine with a single `docker compose up` command — no API keys required for the demo. It degrades gracefully: when live data sources are unavailable, a synthetic replay mode generates statistically realistic signals from pre-cached data. The architecture mirrors how real financial risk platforms (RavenPack, Bloomberg BVAL) are structured — a signal extraction layer feeding downstream risk consumers — making it directly applicable to wholesale banking use cases.
+**What makes this different from a standard sentiment dashboard:**
+
+The core architectural decision was to **treat this as three separate ML problems** instead of asking one LLM to do everything. Sentiment, event classification, and impact scoring are solved independently with the right tool for each:
+- **Sentiment**: ProsusAI/FinBERT — a BERT model specifically pre-trained on financial text, validated on Financial PhraseBank. Not a generic LLM.
+- **Event classification**: Rule-based keyword classifier across 10 financial event types (Earnings, M&A, Regulatory, Geopolitical, Credit, etc.), with a DeBERTa fine-tuning notebook ready for upgrade.
+- **Impact scoring**: XGBoost regressor trained on *actual abnormal market returns* — `stock_return − SPY_return` at +1h and +1d windows after news events. Spearman ρ improved from −0.067 (rule-based baseline) to **+0.318** with price momentum features. Not an LLM guess.
+
+The entire system is built around a **frozen Pydantic v2 `RiskSignal` schema** as the single contract between the NLP engine, Module A, Module B, the dashboard, and Redis Streams. This is the same pattern used by production financial data platforms like RavenPack — a normalised signal layer that any downstream consumer can subscribe to without knowing the data source.
+
+The system runs fully offline in replay mode — no API keys required for the demo — and degrades gracefully when live sources are unavailable. It mirrors how real financial risk platforms (RavenPack, Bloomberg BVAL) are structured: a signal extraction layer feeding downstream risk consumers, making it directly applicable to wholesale banking operations.
 
 ---
 
@@ -255,27 +264,35 @@ This runs the full pipeline — NLP → DuckDB → Redis → stress test (if imp
 |-----------|--------|-------|
 | Sentiment (FinBERT, Financial PhraseBank) | Accuracy | Run `python scripts/evaluate.py` |
 | Event classifier (rule-based, 10 types) | Macro F1 | Run `python scripts/evaluate.py` |
-| XGBoost v5 Impact Model | Spearman ρ | **+0.318** vs baseline −0.067 |
-| XGBoost v5 Impact Model | MAE | **1.644** vs baseline 3.515 (−54% improvement) |
+| XGBoost v4 Impact Model (text features only) | Spearman ρ | +0.128 |
+| XGBoost v5 Impact Model (+ price momentum) | Spearman ρ | **+0.318** (vs baseline −0.067) |
+| XGBoost v5 Impact Model | MAE | **1.644** vs rule-based 3.515 (**−54% improvement**) |
+
+**Why this matters**: A Spearman ρ of +0.318 means the model correctly ranks ~63% of event pairs by impact magnitude — better than random (50%) and meaningfully better than the rule-based baseline. Every 0.1 improvement in ρ translates to fewer false alerts reaching risk managers.
+
+### Information Diffusion — Beyond Simple Sentiment
+
+Most approaches score each article independently. FinRisk implements a **Hawkes-lite diffusion scorer**: `score = Σ exp(−β × Δt)` over article arrivals per event cluster. This captures *how fast* a story spreads — a feature that academic research shows is as predictive as sentiment direction for short-term volatility. Combined with **cluster-level sentiment aggregation** (Reuters confidence=1.0 outweighs anonymous social post confidence=0.4), the system correctly weights source quality rather than treating all mentions equally.
 
 ### Module A — Tactical Index Rebalancer
 
-- 20-stock FinRisk index rebalanced dynamically based on cluster-aggregated FinBERT sentiment
-- Volatility-adjusted signal scoring: `sentiment × confidence × novelty / realized_vol`
-- Exponential decay by event type (Regulatory: 72h half-life; Earnings: 6h half-life)
-- Turnover capped at 20% per rebalance; weights bounded [2%, 15%]
+- 20-stock FinRisk index (AAPL, MSFT, NVDA, JPM, GS, XOM...) rebalanced dynamically
+- Scores use exponential time-decay per event type: Regulatory 72h half-life, Earnings 6h half-life
+- Volatility-adjusted: `signal / realized_vol_20d` so high-beta stocks don't get over-tilted
+- Turnover capped at 20% per rebalance; weights bounded [2%, 15%] — no extreme concentration
+- **Example**: Persistent negative Geopolitical signals on NVDA → weight reduced from 5.0% to ~2.0% automatically
 
 ### Module B — Wholesale Portfolio Stress Tester
 
-- **Portfolio**: 300 synthetic positions — 120 bonds, 80 loans, 60 equities, 25 FX forwards, 15 IR swaps (~$60M NAV)
-- **Deterministic**: First-order factor shocks (duration-convexity bonds, ΔEL loans, beta equities, DV01 swaps)
-- **Monte Carlo**: 10,000 paths, Student-t(df=5) fat tails, Cholesky-correlated factors, propagates NLP uncertainty via `impact_range`
-- **Example**: Geopolitical event (impact 8.5, sentiment −0.80) → ΔNAV −$1.04M (−1.75%), VaR95 $1.93M, ES95 $2.57M
-- **Reverse stress test**: binary search for minimum impact that breaches a configurable loss limit
+- **Portfolio**: 300 synthetic positions — 120 bonds, 80 loans, 60 equities, 25 FX forwards, 15 IR swaps (~$60M NAV, seed=42 deterministic)
+- **Correct financial mathematics**: bonds use duration-convexity (`ΔP = −D·Δr + ½C·Δr²`), loans use `ΔEL = (PD_stressed − PD_base) × LGD × EAD`, swaps use `ΔV = −DV01 × Δr_bps`. Rate signs are calibrated by event type — Geopolitical triggers flight-to-quality (rates *fall*), not a naive rate-rise shock.
+- **Monte Carlo**: 10,000 paths, Student-t(df=5) fat tails, Cholesky-correlated 5-factor model, propagates NLP model uncertainty via `impact_range` sampling
+- **Reverse stress test**: binary search for the minimum impact that breaches a configurable loss limit — a feature directly from Basel stress testing methodology
+- **Example output**: Geopolitical event (impact 8.5, sentiment −0.80) → deterministic ΔNAV −$1.04M (−1.75%), MC VaR95 $1.93M, ES95 $2.57M
 
 ### Domain Impact
 
-This platform addresses a real gap in wholesale banking operations: the lack of an automated, real-time bridge between unstructured market intelligence and quantitative risk metrics. A credit officer using FinRisk would see, within seconds of a major regulatory announcement, a quantified portfolio stress estimate and an automatically rebalanced hedging index — tasks that currently take hours of manual work.
+A credit officer using FinRisk would see, within seconds of a major regulatory announcement, a quantified portfolio stress estimate (VaR, ES, per-asset-class breakdown) and an automatically rebalanced hedging index — tasks that currently take hours of manual work. The system produces the same three outputs that commercial risk intelligence platforms (RavenPack, Bloomberg NLP) produce: **sentiment score**, **event classification**, and **impact score** — but built transparently, with methodology that can be audited and improved.
 
 ---
 
