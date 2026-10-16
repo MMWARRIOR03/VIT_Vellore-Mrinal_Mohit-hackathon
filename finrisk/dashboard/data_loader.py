@@ -72,13 +72,20 @@ class DataLoader:
     # ── Stress runs — read from DuckDB with retry ─────────────────────────────
 
     def get_stress_runs(self, limit: int = 20) -> list[dict]:
-        """Stress runs are stored in DuckDB — try a short-lived connection."""
-        return _read_stress_runs(limit)
+        """Fetch stress runs via the API (avoids DuckDB lock conflict)."""
+        result = _get("/module-a/stress-runs", {"limit": limit})
+        if isinstance(result, list):
+            return result
+        return []
 
     # ── Rebalance events ──────────────────────────────────────────────────────
 
     def get_rebalance_events(self, limit: int = 100) -> list[dict]:
-        return _read_rebalance_events(limit)
+        """Fetch rebalance events via the API (avoids DuckDB lock conflict)."""
+        result = _get("/module-a/rebalance-events", {"limit": limit})
+        if isinstance(result, list):
+            return result
+        return []
 
     # ── Summary stats ─────────────────────────────────────────────────────────
 
@@ -171,6 +178,12 @@ class DataLoader:
         eq_weight = round(1.0 / len(_UNIVERSE), 6)
         equal_weights: dict[str, float] = {t: eq_weight for t in _UNIVERSE}
 
+        # Try live weights from the rebalancer first (most up-to-date)
+        result = _get("/module-a/current-weights")
+        if isinstance(result, dict) and len(result) >= 10:
+            return result
+
+        # Fallback: last persisted rebalance event
         events = self.get_rebalance_events(limit=1)
         if not events:
             return equal_weights

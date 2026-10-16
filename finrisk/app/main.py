@@ -240,7 +240,10 @@ def create_app() -> FastAPI:
     app.include_router(health.router, tags=["health"])
     app.include_router(signals.router, prefix="/signals", tags=["signals"])
     app.include_router(articles.router, prefix="/articles", tags=["articles"])
-    app.include_router(inject_router.router)   # prefix="/inject" set in the router
+    app.include_router(inject_router.router)
+
+    from app.routes import module_a as module_a_routes
+    app.include_router(module_a_routes.router)
 
     # ── Global exception handler ──────────────────────────────────────────────
     @app.exception_handler(Exception)
