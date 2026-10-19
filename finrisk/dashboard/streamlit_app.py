@@ -2,7 +2,7 @@
 FinRisk Intelligence Dashboard — main Streamlit entry point.
 
 Run with:
-    streamlit run dashboard/app.py --server.port 8501
+    streamlit run dashboard/streamlit_app.py --server.port 8501
 
 from the finrisk/ directory.
 
@@ -21,11 +21,13 @@ from pathlib import Path
 import streamlit as st
 
 # ── sys.path setup ────────────────────────────────────────────────────────────
-# When launched from finrisk/, add finrisk/ to sys.path so that
-# `from app.xxx import ...` and `from module_a/b import ...` resolve correctly.
+# Keep the project root before Streamlit's script directory. This ensures that
+# imports such as `app.schema` resolve to finrisk/app/, never to this dashboard.
 _FINRISK_ROOT = Path(__file__).resolve().parents[1]
-if str(_FINRISK_ROOT) not in sys.path:
-    sys.path.insert(0, str(_FINRISK_ROOT))
+_root_string = str(_FINRISK_ROOT)
+if _root_string in sys.path:
+    sys.path.remove(_root_string)
+sys.path.insert(0, _root_string)
 
 # Change working directory to finrisk/ so relative paths (e.g. ./data/finrisk.duckdb) work
 os.chdir(_FINRISK_ROOT)
@@ -114,7 +116,5 @@ with tab_module_b:
 
 # ── Manual fallback refresh ───────────────────────────────────────────────────
 if not _USING_AUTOREFRESH:
-    import time
-
     if st.button("🔄 Refresh now", key="manual_refresh"):
         st.rerun()

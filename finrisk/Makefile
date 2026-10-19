@@ -88,7 +88,7 @@ sample-data-fast:  ## Pre-generate articles only (skip NLP model download)
 # ─── Housekeeping ────────────────────────────────────────────────────────────
 
 dashboard:  ## Run Streamlit dashboard on port 8501
-	$(VENV)/bin/streamlit run dashboard/app.py --server.port 8501
+	$(VENV)/bin/streamlit run dashboard/streamlit_app.py --server.port 8501
 
 clean:  ## Remove venv, cache, and test artifacts
 	rm -rf $(VENV) __pycache__ .pytest_cache htmlcov .coverage

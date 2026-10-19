@@ -32,8 +32,8 @@ The system runs fully offline in replay mode — no API keys required for the de
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         Data Sources                                │
-│   GDELT News ──┐   SEC EDGAR ──┐   StockTwits ──┐   Kaggle Tweets  │
-└────────────────┼───────────────┼────────────────┼──────────────────┘
+│   GDELT News ──┐   SEC EDGAR ──┐   StockTwits ──┐   Kaggle Tweets   │
+└────────────────┼───────────────┼────────────────┼───────────────────┘
                  │               │                │
                  └───────────────┴────────────────┘
                                  │
@@ -54,25 +54,25 @@ The system runs fully offline in replay mode — no API keys required for the de
                                  │ RiskSignal (frozen Pydantic v2)
               ┌──────────────────┼──────────────────┐
               │                  │                  │
-   ┌──────────▼──────┐  ┌───────▼────────┐  ┌─────▼──────┐
-   │  Module A        │  │   Module B     │  │  DuckDB    │
-   │  IndexRebalancer │  │  StressEngine  │  │  storage   │
-   │  FinRisk-20      │  │  + MC Engine   │  └─────┬──────┘
-   │  20-stock index  │  │  + Rev. Stress │        │
-   └──────────┬──────┘  └───────┬────────┘        │
-              │                 │                  │
-              └─────────────────┴──────────────────┘
-                                │  processed.signals / signals.stress
-                    ┌───────────▼───────────┐
-                    │  Streamlit Dashboard  │
-                    │  Tab 1: Live Feed     │
-                    │  Tab 2: Explorer      │
-                    │  Tab 3: Module A      │
-                    │  Tab 4: Module B      │
-                    └───────────────────────┘
+   ┌──────────▼───────┐  ┌───────▼────────┐   ┌─────▼──────┐
+   │  Module A        │  │   Module B     │   │  DuckDB    │
+   │  IndexRebalancer │  │  StressEngine  │   │  storage   │
+   │  FinRisk-20      │  │  + MC Engine   │   └─────┬──────┘
+   │  20-stock index  │  │  + Rev. Stress │         │
+   └──────────┬───────┘  └───────┬────────┘         │
+              │                  │                  │
+              └──────────────────┴──────────────────┘
+                                 │  processed.signals / signals.stress
+                    ┌────────────▼───────────┐
+                    │   Streamlit Dashboard  │
+                    │   Tab 1: Live Feed     │
+                    │   Tab 2: Explorer      │
+                    │   Tab 3: Module A      │
+                    │   Tab 4: Module B      │
+                    └────────────────────────┘
 ```
 
-See `docs/architecture.png` for the high-resolution diagram.
+See [`docs/architecture-diagram.svg`](docs/architecture-diagram.svg) for the high-resolution architecture diagram.
 
 | Component | Technology |
 |-----------|-----------|
@@ -119,7 +119,13 @@ See `docs/architecture.png` for the high-resolution diagram.
 
 ---
 
-### Option A — One-command Docker demo (recommended, no internet required)
+### Option A — Docker demo (recommended)
+
+**Disk space and network:** The first Docker build downloads the Python/ML
+dependencies and creates multiple images. Keep **at least 20 GB of free disk
+space** available to Docker Desktop before building (especially on macOS), and
+use a stable internet connection for that first build. The running demo uses
+synthetic signals and does not require external market-data APIs.
 
 ```bash
 git clone https://github.com/MMWARRIOR03/VIT_Vellore-Mrinal_Mohit-hackathon.git
@@ -128,8 +134,11 @@ cd VIT_Vellore-Mrinal_Mohit-hackathon/finrisk
 # Copy environment file (defaults work out of the box)
 cp .env.example .env
 
-# Start all services
-docker compose up --build
+# Build one image at a time to avoid concurrent large dependency downloads
+docker compose --parallel 1 build
+
+# Start Redis, API (with its built-in NLP worker), and the dashboard
+docker compose up
 ```
 
 **Access:**
@@ -139,25 +148,11 @@ docker compose up --build
 | FastAPI (REST + Swagger) | http://localhost:8000/docs |
 | Health check | http://localhost:8000/health |
 
-The default `.env` uses `FAKE_SIGNAL_ENABLED=true` — synthetic signals start flowing immediately, no external APIs needed. Module B manual stress test works out of the box.
+The default `.env` uses `FAKE_SIGNAL_ENABLED=true` — synthetic signals start flowing immediately, with no external market-data API required. Module B manual stress test works out of the box.
 
 ---
 
-### Option B — With live data ingestion
-
-```bash
-# Start all 5 services including live GDELT/EDGAR/StockTwits polling
-docker compose --profile live up
-
-# Optional: add your Groq API key for LLM explanations on signals
-# Get a free key at console.groq.com (no credit card)
-echo "LLM_PROVIDER=groq" >> .env
-echo "GROQ_API_KEY=your_key_here" >> .env
-```
-
----
-
-### Option C — Local development (no Docker)
+### Option B — Local development (no Docker)
 
 **Prerequisites:** Python 3.11, Redis (Docker or local), Git
 
@@ -189,7 +184,7 @@ make dashboard
 
 ---
 
-### Option D — Train the XGBoost Impact Model on Google Colab (optional)
+### Option C — Train the XGBoost Impact Model on Google Colab (optional)
 
 The system runs with a rule-based impact estimator by default. To train the market-calibrated XGBoost model:
 

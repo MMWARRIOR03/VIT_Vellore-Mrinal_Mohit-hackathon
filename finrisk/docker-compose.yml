@@ -4,7 +4,7 @@ services:
   # ── Redis ───────────────────────────────────────────────────────────────────
   redis:
     image: redis:7.2-alpine
-    container_name: finrisk-redis
+    container_name: finrisk_redis
     ports:
       - "6379:6379"
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
@@ -43,7 +43,10 @@ services:
       start_period: 20s
     restart: unless-stopped
 
-  # ── NLP worker ───────────────────────────────────────────────────────────────
+  # ── Standalone NLP worker (advanced / optional) ──────────────────────────────
+  # The API starts the NLP worker by default (NLP_WORKER_ENABLED=true), so this
+  # service is opt-in.  Do not enable it unless NLP_WORKER_ENABLED=false is set
+  # for the API as well; otherwise two workers consume raw.articles.
   worker:
     build:
       context: .
@@ -59,6 +62,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    profiles:
+      - standalone-worker
     restart: unless-stopped
 
   # ── Live ingestion (opt-in via --profile live) ────────────────────────────
@@ -94,6 +99,9 @@ services:
       - .env
     environment:
       DUCKDB_PATH: /app/data/finrisk.duckdb
+      # Inside Compose, localhost is the dashboard container itself. Use the
+      # API service hostname so dashboard reads stay out of DuckDB's writer lock.
+      API_BASE_URL: http://api:8000
     volumes:
       - ./data:/app/data
     depends_on:
