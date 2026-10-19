@@ -1,10 +1,11 @@
 # FinRisk Intelligence Engine - S&P Global & Crisil Campus Hackathon 2026
 
-**Candidate Name:** Mrinal Mohit
-**College Email ID:** mrinal.23bce11545@vitbhopal.ac.in
-**College / Campus:** VIT Vellore
-**Demo Video Link:** [YouTube Walkthrough — PLACEHOLDER: add link before submission]
-**Slide Deck Link:** [Presentation Deck](https://github.com/MMWARRIOR03/VIT_Vellore-Mrinal_Mohit-hackathon/blob/master/docs/FinRisk_Presentation.pdf)
+- **Candidate Name:** Mrinal Mohit
+- **College Email ID:** mrinal.23bce11545@vitbhopal.ac.in
+- **College / Campus:** VIT Vellore
+- **Demo Video Link:** [YouTube Walkthrough](https://youtu.be/rEr0Eq4B-HU)
+- **Slide Deck Link:** [Presentation Deck](https://github.com/MMWARRIOR03/VIT_Vellore-Mrinal_Mohit-hackathon/blob/master/docs/FinRisk_Presentation.pdf)
+
 
 ---
 
