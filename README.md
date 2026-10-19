@@ -4,7 +4,7 @@
 **College Email ID:** mrinal.23bce11545@vitbhopal.ac.in
 **College / Campus:** VIT Vellore
 **Demo Video Link:** [YouTube Walkthrough — PLACEHOLDER: add link before submission]
-**Slide Deck Link:** [Presentation Deck — PLACEHOLDER: add link before submission]
+**Slide Deck Link:** [Presentation Deck](https://github.com/MMWARRIOR03/VIT_Vellore-Mrinal_Mohit-hackathon/blob/master/docs/FinRisk_Presentation.pdf)
 
 ---
 
