@@ -189,6 +189,44 @@ make dashboard
 
 The system runs with a rule-based impact estimator by default. To train the market-calibrated XGBoost model:
 
+#### Use the provided trained artifacts
+
+Pre-trained XGBoost model artifacts are available in this
+[Google Drive folder](https://drive.google.com/drive/folders/1AuxzIMVY1oGFTiPaB_DGt9n6DC_s-JdZ?usp=sharing).
+Download the Pickle and JSON files, then place them in `finrisk/data/models/`:
+
+```text
+finrisk/data/models/impact_xgb.pkl
+finrisk/data/models/impact_xgb_features.json
+finrisk/data/models/impact_percentiles.json
+```
+
+The tracked `finrisk/.env.example` intentionally keeps
+`MODEL_IMPACT=rules` as the safe default. After copying it to your local
+`finrisk/.env`, change that line to activate the downloaded model:
+
+```env
+MODEL_IMPACT=xgboost
+```
+
+Restart the API after making this change. With Docker Compose, rebuild the API
+image so it includes the updated runtime code:
+
+```bash
+cd finrisk
+docker compose up -d --build api
+docker compose logs -f api
+```
+
+Successful loading is confirmed by log entries similar to:
+
+```text
+XGBoostImpactModel loaded: 25 features, best_iter=...
+ImpactCalculator: using XGBoost model from data/models/impact_xgb.pkl
+```
+
+#### Train your own model in Colab
+
 **Step 1 — Open the Colab notebook**
 ```
 notebooks/train_impact_model_colab.ipynb
@@ -227,7 +265,7 @@ make dev   # or docker compose restart api
 You should see in the logs:
 ```
 ImpactCalculator: using XGBoost model from data/models/impact_xgb.pkl
-XGBoostImpactModel loaded: 33 features, best_iter=151
+XGBoostImpactModel loaded: 25 features, best_iter=...
 ```
 
 **Evaluation results (v5, price momentum features):**

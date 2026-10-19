@@ -304,6 +304,8 @@ class NLPWorker:
             sentiment=agg_sentiment,
             novelty=novelty,
             diffusion_score=diffusion.score,
+            article_dict=article_dict,
+            source_count=cluster_source_count,
         )
 
         # ── 10. Decay half-life ───────────────────────────────────────────────
